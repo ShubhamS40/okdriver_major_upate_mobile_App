@@ -1,0 +1,227 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// INDIVIDUAL DRIVER LOGIN SECTION
+model Driver {
+  id                String   @id @default(uuid())
+  firstName         String
+  lastName          String
+  email             String   @unique
+  phone             String   @unique
+  latitude          Float
+  longitude         Float
+  emergencyContact  String?  // Optional field
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// INDIVIDUAL DRIVER LOGIN SECTION
+model OTP {
+  id        String   @id @default(uuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// COMPANY AND FLEET OPERATION SCHEMA LOGIC 
+
+// ---------- ENUMS ----------
+enum CompanyType {
+  FLEET_OPERATOR
+  ENTERPRISE
+  UNIVERSITY
+  SCHOOL
+  COLLEGE
+  OTHER
+}
+
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum VehicleStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SenderType {
+  COMPANY
+  DRIVER      // i.e., the person using the vehicle credentials
+  CLIENT
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+// ---------- ADMIN & PLANS ----------
+model Admin {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String   // hashed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Plan {
+  id             Int       @id @default(autoincrement())
+  name           String
+  description    String?
+  price          Decimal    @db.Decimal(10,2)
+  durationDays   Int       // e.g., 30, 90, 365
+  maxVehicles    Int?      // optional soft-limit per company
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // backrefs
+  companies      Company[]
+  subscriptions  Subscription[]
+}
+
+// ---------- COMPANY & SUBSCRIPTIONS ----------
+model Company {
+  id                    Int           @id @default(autoincrement())
+  name                  String
+  email                 String        @unique
+  password              String        // hashed
+  type                  CompanyType   @default(OTHER)
+  status                CompanyStatus @default(ACTIVE)
+
+  // Current active entitlement (gate all features on this)
+  currentPlanId         Int?
+  currentPlan           Plan?         @relation(fields: [currentPlanId], references: [id])
+  subscriptionExpiresAt DateTime?     // null => no purchase yet / blocked
+
+  // Audits
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  // relations
+  vehicles              Vehicle[]
+  clients               Client[]
+  subscriptions         Subscription[]
+  grants                ClientVehicleAccess[]   // convenience backref
+  sentMessages          ChatMessage[] @relation("CompanySender")
+
+  @@index([currentPlanId])
+}
+
+// One row per purchase/renewal/cancel
+model Subscription {
+  id         Int                @id @default(autoincrement())
+  companyId  Int
+  planId     Int
+  startAt    DateTime           @default(now())
+  endAt      DateTime
+  status     SubscriptionStatus @default(ACTIVE)
+  paymentRef String?            // txn id from PG if any
+  createdAt  DateTime           @default(now())
+
+  company    Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan       Plan    @relation(fields: [planId], references: [id])
+
+  @@index([companyId, status])
+  @@index([endAt])
+}
+
+// ---------- VEHICLES (credentials live here) ----------
+model Vehicle {
+  id             Int           @id @default(autoincrement())
+  vehicleNumber  String        @unique    // used as login username by driver
+  password       String                     // hashed; set by company
+  model          String?
+  status         VehicleStatus @default(ACTIVE)
+
+  companyId      Int
+  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // relations
+  locations      VehicleLocation[]
+  chats          ChatMessage[]
+  accesses       ClientVehicleAccess[]
+
+  @@index([companyId, status])
+}
+
+// Fast time-series storage of pings
+model VehicleLocation {
+  id         Int      @id @default(autoincrement())
+  vehicleId  Int
+  lat        Decimal  @db.Decimal(10,7)
+  lng        Decimal  @db.Decimal(10,7)
+  speedKph   Decimal? @db.Decimal(6,2)
+  headingDeg Int?     // 0..359
+  recordedAt DateTime @default(now())
+
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, recordedAt])
+}
+
+// ---------- CLIENTS & ACCESS ----------
+model Client {
+  id         Int      @id @default(autoincrement())
+  companyId  Int      // client belongs to a company who grants access
+  name       String?
+  email      String   @unique
+  createdAt  DateTime @default(now())
+
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  accesses   ClientVehicleAccess[]
+  sentMessages ChatMessage[] @relation("ClientSender")
+}
+
+model ClientVehicleAccess {
+  id          Int      @id @default(autoincrement())
+  companyId   Int      // redundancy: who granted (helps querying)
+  clientId    Int
+  vehicleId   Int
+  createdAt   DateTime @default(now())
+
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, vehicleId])      // same client -> same vehicle only once
+  @@index([companyId])
+}
+
+// ---------- CHAT (per-vehicle room) ----------
+model ChatMessage {
+  id              Int        @id @default(autoincrement())
+  vehicleId       Int
+  senderType      SenderType
+  senderCompanyId Int?       // when senderType = COMPANY
+  senderClientId  Int?       // when senderType = CLIENT
+  message         String
+  createdAt       DateTime   @default(now())
+
+  vehicle         Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  senderCompany   Company?   @relation("CompanySender", fields: [senderCompanyId], references: [id], onDelete: SetNull)
+  senderClient    Client?    @relation("ClientSender", fields: [senderClientId], references: [id], onDelete: SetNull)
+
+  @@index([vehicleId, createdAt])
+  @@index([senderCompanyId])
+  @@index([senderClientId])
+}

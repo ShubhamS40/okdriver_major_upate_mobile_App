@@ -55,6 +55,7 @@ dependencies:
   avatar_glow: ^3.0.1
   just_audio: ^0.9.36
   flutter_launcher_icons: ^0.14.4
+  web_socket_channel: ^3.0.3
 
 dev_dependencies:
   flutter_test:

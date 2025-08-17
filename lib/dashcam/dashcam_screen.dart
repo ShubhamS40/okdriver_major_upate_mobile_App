@@ -406,7 +406,7 @@ class _DashcamScreenState extends State<DashcamScreen>
         // If we have a video path from background service, use it
         String? backgroundVideoPath = _backgroundService.currentVideoPath;
         if (videoFile == null) {
-          videoFile = XFile(backgroundVideoPath);
+          // videoFile = XFile(backgroundVideoPath);
         }
       }
 

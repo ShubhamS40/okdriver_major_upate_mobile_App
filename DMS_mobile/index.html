@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drowsiness Detection System</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 350px;
+            gap: 25px;
+        }
+        
+        .video-section {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 25px;
+            border-radius: 20px;
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .controls-section {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 25px;
+            border-radius: 20px;
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            height: fit-content;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+            text-shadow: 2px 2px 8px rgba(0,0,0,0.3);
+            font-size: 2.5rem;
+            background: linear-gradient(45deg, #fff, #e0e0e0);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        video {
+            width: 100%;
+            max-width: 640px;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .status-card {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 15px;
+            border-left: 5px solid;
+            transition: all 0.3s ease;
+        }
+        
+        .status-alert { 
+            border-left-color: #4ade80;
+            box-shadow: 0 0 20px rgba(74, 222, 128, 0.2);
+        }
+        .status-yawning { 
+            border-left-color: #fbbf24;
+            box-shadow: 0 0 20px rgba(251, 191, 36, 0.2);
+        }
+        .status-drowsy { 
+            border-left-color: #ef4444;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
+        }
+        .status-critical { 
+            border-left-color: #dc2626; 
+            animation: criticalPulse 1.5s ease-in-out infinite;
+            box-shadow: 0 0 30px rgba(220, 38, 38, 0.4);
+        }
+        
+        @keyframes criticalPulse {
+            0%, 100% { 
+                transform: scale(1); 
+                box-shadow: 0 0 30px rgba(220, 38, 38, 0.4);
+            }
+            50% { 
+                transform: scale(1.02); 
+                box-shadow: 0 0 40px rgba(220, 38, 38, 0.6);
+            }
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .metric {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.2s;
+        }
+        
+        .metric:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .metric-value {
+            font-size: 20px;
+            font-weight: bold;
+            margin-top: 8px;
+            color: #fff;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+            background: linear-gradient(45deg, #5a67d8, #6b46c1);
+        }
+        
+        button:active {
+            transform: translateY(-1px);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .connection-status {
+            text-align: center;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        .connected {
+            background: rgba(74, 222, 128, 0.2);
+            color: #4ade80;
+            border: 1px solid rgba(74, 222, 128, 0.3);
+        }
+        
+        .disconnected {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        
+        .log {
+            max-height: 250px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px;
+            border-radius: 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            margin-top: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            opacity: 0.9;
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .log-entry.alert {
+            color: #fbbf24;
+            font-weight: bold;
+        }
+        
+        .log-entry.critical {
+            color: #ef4444;
+            font-weight: bold;
+            text-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+        }
+        
+        .button-group {
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .settings-panel {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 12px;
+            margin-top: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .settings-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+        
+        .setting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+        
+        .server-input {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            width: 100%;
+            margin-top: 5px;
+        }
+        
+        .server-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            
+            h1 {
+                font-size: 2rem;
+            }
+            
+            .metrics {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(74, 222, 128, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Real-time Drowsiness Detection System</h1>
+    
+    <div class="container">
+        <div class="video-section">
+            <video id="video" autoplay muted playsinline></video>
+            <canvas id="canvas" style="display: none;"></canvas>
+            <div class="button-group">
+                <button id="startBtn">🚀 Start Detection</button>
+                <button id="stopBtn" disabled>⏹️ Stop Detection</button>
+            </div>
+        </div>
+        
+        <div class="controls-section">
+            <div id="connectionStatus" class="connection-status disconnected">
+                📡 Disconnected from Server
+            </div>
+            
+            <div id="statusCard" class="status-card status-alert">
+                <div style="font-size: 20px; font-weight: bold;">🟢 Status: WAITING</div>
+                <div style="font-size: 14px; margin-top: 8px; opacity: 0.9;">Click Start Detection to begin monitoring</div>
+            </div>
+            
+            <div class="metrics">
+                <div class="metric">
+                    <div class="metric-label">👁️ EAR</div>
+                    <div class="metric-value" id="earValue">0.000</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">👄 MAR</div>
+                    <div class="metric-value" id="marValue">0.000</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">🧠 CNN</div>
+                    <div class="metric-value" id="cnnValue">0.00</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">⚠️ Events</div>
+                    <div class="metric-value" id="eventsValue">0</div>
+                </div>
+            </div>
+            
+            <div class="settings-panel">
+                <div class="settings-title">🔧 Connection Settings</div>
+                <input type="text" id="serverInput" class="server-input" 
+                       placeholder="ws://localhost:8000/ws" 
+                       value="ws://localhost:8000/ws">
+                <button id="reconnectBtn" style="margin-top: 10px; width: 100%; font-size: 14px;">
+                    🔄 Reconnect
+                </button>
+            </div>
+            
+            <div class="log" id="logContainer">
+                <div class="log-entry">🚀 System initialized and ready</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let video, canvas, ctx, ws, isDetecting = false;
+        let detectionInterval;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        
+        const statusCard = document.getElementById('statusCard');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const logContainer = document.getElementById('logContainer');
+        const serverInput = document.getElementById('serverInput');
+        const reconnectBtn = document.getElementById('reconnectBtn');
+        
+        // Status emojis and colors
+        const statusConfig = {
+            'ALERT': { emoji: '🟢', color: 'status-alert' },
+            'YAWNING': { emoji: '🟡', color: 'status-yawning' },
+            'DROWSY': { emoji: '🔴', color: 'status-drowsy' },
+            'CRITICAL': { emoji: '🚨', color: 'status-critical' }
+        };
+        
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString();
+            entry.textContent = `[${timestamp}] ${message}`;
+            logContainer.appendChild(entry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+            
+            // Keep only last 50 entries
+            while (logContainer.children.length > 50) {
+                logContainer.removeChild(logContainer.firstChild);
+            }
+        }
+        
+        function getWebSocketUrl() {
+            const input = serverInput.value.trim();
+            if (input) return input;
+            
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            return `${protocol}//${location.host}/ws`;
+        }
+        
+        function connectWebSocket() {
+            const wsUrl = getWebSocketUrl();
+            log(`🔌 Connecting to ${wsUrl}...`);
+            
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = function() {
+                    connectionStatus.textContent = '📡 Connected to Server';
+                    connectionStatus.className = 'connection-status connected pulse';
+                    reconnectAttempts = 0;
+                    log('✅ WebSocket connected successfully');
+                    
+                    // Remove pulse after 3 seconds
+                    setTimeout(() => {
+                        connectionStatus.classList.remove('pulse');
+                    }, 3000);
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const message = JSON.parse(event.data);
+                        
+                        if (message.type === 'detection_result') {
+                            handleDetectionResult(message.data);
+                        } else if (message.type === 'pong') {
+                            log('🏓 Pong received');
+                        }
+                    } catch (e) {
+                        log('❌ Failed to parse message: ' + e.message);
+                    }
+                };
+                
+                ws.onclose = function(event) {
+                    connectionStatus.textContent = '📡 Disconnected from Server';
+                    connectionStatus.className = 'connection-status disconnected';
+                    log(`🔌 WebSocket disconnected (Code: ${event.code})`);
+                    
+                    // Stop detection if active
+                    if (isDetecting) {
+                        stopDetection();
+                    }
+                    
+                    // Auto-reconnect with exponential backoff
+                    if (reconnectAttempts < maxReconnectAttempts) {
+                        const delay = Math.pow(2, reconnectAttempts) * 1000;
+                        reconnectAttempts++;
+                        log(`🔄 Reconnecting in ${delay/1000}s (Attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+                        setTimeout(connectWebSocket, delay);
+                    } else {
+                        log('❌ Max reconnection attempts reached. Click Reconnect to try again.');
+                    }
+                };
+                
+                ws.onerror = function(error) {
+                    log('❌ WebSocket error occurred');
+                };
+                
+            } catch (error) {
+                log('❌ Failed to create WebSocket connection: ' + error.message);
+            }
+        }
+        
+        function handleDetectionResult(data) {
+            if (data.error) {
+                log('❌ Detection Error: ' + data.error, 'alert');
+                return;
+            }
+            
+            if (!data.face_detected) {
+                statusCard.className = 'status-card status-alert';
+                statusCard.innerHTML = `
+                    <div style="font-size: 20px; font-weight: bold;">😶 No Face Detected</div>
+                    <div style="font-size: 14px; margin-top: 8px; opacity: 0.9;">Please position yourself in front of the camera</div>
+                `;
+                return;
+            }
+            
+            // Determine status configuration
+            let statusType = 'ALERT';
+            if (data.alert_level >= 4) statusType = 'CRITICAL';
+            else if (data.alert_level >= 3) statusType = 'DROWSY';
+            else if (data.alert_level >= 2) statusType = 'YAWNING';
+            
+            const config = statusConfig[statusType];
+            
+            // Update status card
+            statusCard.className = `status-card ${config.color}`;
+            statusCard.innerHTML = `
+                <div style="font-size: 20px; font-weight: bold;">${config.emoji} Status: ${statusType}</div>
+                <div style="font-size: 14px; margin-top: 8px; opacity: 0.9;">${data.message}</div>
+            `;
+            
+            // Update metrics
+            if (data.metrics) {
+                document.getElementById('earValue').textContent = data.metrics.ear;
+                document.getElementById('marValue').textContent = data.metrics.mar;
+                document.getElementById('cnnValue').textContent = data.metrics.cnn_confidence;
+                document.getElementById('eventsValue').textContent = data.metrics.drowsy_events;
+            }
+            
+            // Log important events
+            if (data.alert_level >= 4) {
+                log(`🚨 CRITICAL: ${data.message}`, 'critical');
+            } else if (data.alert_level >= 3) {
+                log(`⚠️ ALERT: ${data.message}`, 'alert');
+            }
+        }
+        
+        async function initCamera() {
+            video = document.getElementById('video');
+            canvas = document.getElementById('canvas');
+            ctx = canvas.getContext('2d');
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        width: { ideal: 640 }, 
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    },
+                    audio: false
+                });
+                
+                video.srcObject = stream;
+                video.onloadedmetadata = function() {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    log('📷 Camera initialized successfully');
+                };
+                
+                return true;
+            } catch (err) {
+                log('❌ Camera access denied: ' + err.message, 'alert');
+                alert('Please allow camera access to use this application. Check your browser permissions and refresh the page.');
+                return false;
+            }
+        }
+        
+        function captureFrame() {
+            if (!video.videoWidth || !video.videoHeight) return null;
+            
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            return canvas.toDataURL('image/jpeg', 0.7);
+        }
+        
+        function startDetection() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('❌ WebSocket not connected. Please wait for connection and try again.');
+                return;
+            }
+            
+            if (!video.srcObject) {
+                alert('❌ Camera not initialized. Please refresh the page and allow camera access.');
+                return;
+            }
+            
+            isDetecting = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            log('🚀 Detection started');
+            
+            // Send frames at 5 FPS (200ms interval)
+            detectionInterval = setInterval(() => {
+                if (isDetecting && ws.readyState === WebSocket.OPEN) {
+                    const frameData = captureFrame();
+                    if (frameData) {
+                        ws.send(JSON.stringify({
+                            type: 'frame',
+                            data: frameData
+                        }));
+                    }
+                }
+            }, 200);
+        }
+        
+        function stopDetection() {
+            isDetecting = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+                detectionInterval = null;
+            }
+            
+            statusCard.className = 'status-card status-alert';
+            statusCard.innerHTML = `
+                <div style="font-size: 20px; font-weight: bold;">⏹️ Status: STOPPED</div>
+                <div style="font-size: 14px; margin-top: 8px; opacity: 0.9;">Detection has been stopped</div>
+            `;
+            
+            log('⏹️ Detection stopped');
+        }
+        
+        function reconnectWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+            reconnectAttempts = 0;
+            connectWebSocket();
+        }
+        
+        // Event listeners
+        startBtn.addEventListener('click', startDetection);
+        stopBtn.addEventListener('click', stopDetection);
+        reconnectBtn.addEventListener('click', reconnectWebSocket);
+        
+        // Handle visibility change (pause detection when tab is not active)
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden && isDetecting) {
+                log('⏸️ Tab hidden - pausing detection');
+                if (detectionInterval) {
+                    clearInterval(detectionInterval);
+                    detectionInterval = null;
+                }
+            } else if (!document.hidden && isDetecting && !detectionInterval) {
+                log('▶️ Tab visible - resuming detection');
+                detectionInterval = setInterval(() => {
+                    if (isDetecting && ws.readyState === WebSocket.OPEN) {
+                        const frameData = captureFrame();
+                        if (frameData) {
+                            ws.send(JSON.stringify({
+                                type: 'frame',
+                                data: frameData
+                            }));
+                        }
+                    }
+                }, 200);
+            }
+        });
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(event) {
+            if (event.code === 'Space' && !event.target.matches('input')) {
+                event.preventDefault();
+                if (isDetecting) {
+                    stopDetection();
+                } else {
+                    startDetection();
+                }
+            }
+        });
+        
+        // Initialize application
+        window.onload = async function() {
+            log('🌟 Application starting...');
+            
+            const cameraReady = await initCamera();
+            if (cameraReady) {
+                connectWebSocket();
+                log('✅ Application ready! Press Space to start/stop detection.');
+            } else {
+                log('❌ Application failed to initialize due to camera access.');
+            }
+        };
+        
+        // Cleanup on page unload
+        window.onbeforeunload = function() {
+            if (ws) {
+                ws.close();
+            }
+            if (video && video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+        };
+    </script>
+</body>
+</html>
