@@ -1,6 +1,7 @@
 require('dotenv').config();
 const twilio = require('twilio');
 const { PrismaClient } = require('@prisma/client');
+const crypto = require('crypto');
 
 const client = twilio(
   process.env.TWILIO_ACCOUNT_SID,
@@ -8,6 +9,11 @@ const client = twilio(
 );
 
 const prisma = new PrismaClient();
+
+// Generate a secure token
+const generateToken = () => {
+  return crypto.randomBytes(32).toString('hex');
+};
 
 
 // 📤 Send OTP
@@ -38,7 +44,7 @@ exports.sendOTP = async (req, res) => {
 
 
 exports.verifyOTP = async (req, res) => {
-  const { phone, code } = req.body;
+  const { phone, code, deviceInfo } = req.body;
 
   if (!phone || !phone.startsWith('+')) {
     return res.status(400).json({ error: "Phone number must include country code with '+' (e.g., +91XXXXXXXXXX)" });
@@ -62,16 +68,15 @@ exports.verifyOTP = async (req, res) => {
       where: { phone: phone },
     });
 
+    let driver;
+    let isNewUser = false;
+
     if (existingDriver) {
       // ✅ Existing user
-      return res.status(200).json({
-        message: 'OTP verified, user logged in',
-        isNewUser: false,
-        user: existingDriver,
-      });
+      driver = existingDriver;
     } else {
       // 🆕 New user, save phone with blank values
-      const newDriver = await prisma.driver.create({
+      driver = await prisma.driver.create({
         data: {
           phone: phone,
           firstName: '',
@@ -81,13 +86,41 @@ exports.verifyOTP = async (req, res) => {
           longitude: 0.0,
         }
       });
-
-      return res.status(200).json({
-        message: 'OTP verified, new user registered',
-        isNewUser: true,
-        user: newDriver,
-      });
+      isNewUser = true;
     }
+
+    // 3. Deactivate any existing sessions for this driver
+    await prisma.driverSession.updateMany({
+      where: {
+        driverId: driver.id,
+        isActive: true
+      },
+      data: {
+        isActive: false
+      }
+    });
+
+    // 4. Create new session
+    const token = generateToken();
+    const sessionExpiry = new Date();
+    sessionExpiry.setDate(sessionExpiry.getDate() + 30); // 30 days expiry
+
+    const session = await prisma.driverSession.create({
+      data: {
+        driverId: driver.id,
+        token: token,
+        deviceInfo: deviceInfo || 'Unknown Device',
+        expiresAt: sessionExpiry
+      }
+    });
+
+    return res.status(200).json({
+      message: isNewUser ? 'OTP verified, new user registered' : 'OTP verified, user logged in',
+      isNewUser: isNewUser,
+      user: driver,
+      token: token,
+      sessionId: session.id
+    });
 
   } catch (error) {
     console.error('Verify OTP error:', error);

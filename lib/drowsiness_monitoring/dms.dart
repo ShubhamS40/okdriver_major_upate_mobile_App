@@ -1,1 +1,490 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:provider/provider.dart';
+import 'package:okdriver/theme/theme_provider.dart';
+import 'package:okdriver/service/api_config.dart';
+import 'components/camera_view.dart';
+import 'components/metrics_display.dart';
+import 'components/voice_alert_service.dart';
+import 'dart:convert';
+import 'dart:async';
 
+class DrowsinessMonitoringScreen extends StatefulWidget {
+  const DrowsinessMonitoringScreen({Key? key}) : super(key: key);
+
+  @override
+  State<DrowsinessMonitoringScreen> createState() =>
+      _DrowsinessMonitoringScreenState();
+}
+
+class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
+    with TickerProviderStateMixin {
+  late bool _isDarkMode;
+  bool _isMonitoring = false;
+  bool _isConnected = false;
+  bool _isInitializing = true;
+
+  WebSocketChannel? _channel;
+  Map<String, dynamic>? _detectionResult;
+  Map<String, dynamic>? _metrics;
+
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+
+  final VoiceAlertService _voiceAlertService = VoiceAlertService();
+  Timer? _connectionTimer;
+  Timer? _pingTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeAnimations();
+    _initializeServices();
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _connectionTimer?.cancel();
+    _pingTimer?.cancel();
+    _channel?.sink.close();
+    _voiceAlertService.dispose();
+    super.dispose();
+  }
+
+  void _initializeAnimations() {
+    _pulseController = AnimationController(
+      duration: const Duration(milliseconds: 2000),
+      vsync: this,
+    );
+
+    _pulseAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.05,
+    ).animate(CurvedAnimation(
+      parent: _pulseController,
+      curve: Curves.easeInOut,
+    ));
+  }
+
+  Future<void> _initializeServices() async {
+    await _voiceAlertService.initialize();
+
+    if (mounted) {
+      setState(() {
+        _isInitializing = false;
+      });
+    }
+  }
+
+  Future<void> _connectToWebSocket() async {
+    try {
+      final wsUrl = "ws://localhost:8000/ws";
+
+      _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+
+      _channel!.stream.listen(
+        (data) => _handleWebSocketMessage(data),
+        onError: (error) => _handleWebSocketError(error),
+        onDone: () => _handleWebSocketClosed(),
+      );
+
+      setState(() {
+        _isConnected = true;
+      });
+
+      // Start ping timer
+      _pingTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+        if (_isConnected && _channel != null) {
+          _channel!.sink.add(json.encode({'type': 'ping'}));
+        }
+      });
+
+      print('WebSocket connected successfully');
+    } catch (e) {
+      print('WebSocket connection error: $e');
+      setState(() {
+        _isConnected = false;
+      });
+
+      // Retry connection after 5 seconds
+      _connectionTimer = Timer(const Duration(seconds: 5), () {
+        if (mounted && !_isConnected) {
+          _connectToWebSocket();
+        }
+      });
+    }
+  }
+
+  void _handleWebSocketMessage(dynamic data) {
+    try {
+      final message = json.decode(data);
+
+      if (message['type'] == 'detection_result') {
+        final result = message['data'];
+
+        setState(() {
+          _detectionResult = result;
+          _metrics = result['metrics'];
+        });
+
+        // Handle alerts
+        _handleAlerts(result);
+      } else if (message['type'] == 'pong') {
+        // Connection is alive
+        print('WebSocket ping successful');
+      }
+    } catch (e) {
+      print('Error parsing WebSocket message: $e');
+    }
+  }
+
+  void _handleAlerts(Map<String, dynamic> result) {
+    final status = result['status'];
+    final shouldAlert = result['should_alert'] ?? false;
+    final alertLevel = result['alert_level'] ?? 0;
+
+    if (shouldAlert && status == 'DROWSY') {
+      _voiceAlertService.alertDrowsy(isCritical: alertLevel >= 4);
+      _pulseController.repeat(reverse: true);
+    } else if (status == 'YAWNING') {
+      _voiceAlertService.alertYawning();
+    } else if (status == 'NO_FACE') {
+      _voiceAlertService.alertNoFace();
+    } else if (status == 'ALERT') {
+      _pulseController.stop();
+      _pulseController.reset();
+    }
+  }
+
+  void _handleWebSocketError(error) {
+    print('WebSocket error: $error');
+    setState(() {
+      _isConnected = false;
+    });
+  }
+
+  void _handleWebSocketClosed() {
+    print('WebSocket connection closed');
+    setState(() {
+      _isConnected = false;
+    });
+  }
+
+  void _toggleMonitoring() {
+    if (!_isConnected) {
+      _connectToWebSocket();
+      return;
+    }
+
+    setState(() {
+      _isMonitoring = !_isMonitoring;
+    });
+
+    if (!_isMonitoring) {
+      _pulseController.stop();
+      _pulseController.reset();
+    }
+  }
+
+  void _resetDetection() {
+    if (_channel != null && _isConnected) {
+      _channel!.sink.add(json.encode({'type': 'reset'}));
+    }
+
+    setState(() {
+      _detectionResult = null;
+      _metrics = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    _isDarkMode = themeProvider.isDarkTheme;
+
+    return Scaffold(
+      backgroundColor: _isDarkMode ? Colors.black : const Color(0xFFF8F9FA),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            _buildHeader(),
+
+            // Main Content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    // Camera View
+                    _buildCameraSection(),
+
+                    const SizedBox(height: 20),
+
+                    // Metrics Display
+                    MetricsDisplay(
+                      metrics: _metrics,
+                      isDarkMode: _isDarkMode,
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Control Buttons
+                    _buildControlButtons(),
+
+                    const SizedBox(height: 20),
+
+                    // Status Information
+                    _buildStatusInfo(),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: _isDarkMode
+                ? Colors.black.withOpacity(0.3)
+                : Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: _isDarkMode
+                  ? Colors.white.withOpacity(0.1)
+                  : Colors.black.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                Navigator.pop(context);
+              },
+              icon: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: _isDarkMode ? Colors.white : Colors.black,
+                size: 20,
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 16),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Drowsiness Monitoring',
+                  style: TextStyle(
+                    color: _isDarkMode ? Colors.white : Colors.black87,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'AI-powered drowsiness detection',
+                  style: TextStyle(
+                    color: _isDarkMode ? Colors.white70 : Colors.black54,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Connection Status
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: _isConnected ? Colors.green : Colors.red,
+              shape: BoxShape.circle,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCameraSection() {
+    return AnimatedBuilder(
+      animation: _pulseAnimation,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: _pulseAnimation.value,
+          child: Container(
+            height: 300,
+            child: CameraView(
+              onFrameCaptured: (frameData) {
+                if (_isMonitoring && _isConnected && _channel != null) {
+                  _channel!.sink.add(json.encode({
+                    'type': 'frame',
+                    'data': frameData,
+                  }));
+                }
+              },
+              isMonitoring: _isMonitoring,
+              detectionResult: _detectionResult,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildControlButtons() {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton(
+            onPressed: _isInitializing ? null : _toggleMonitoring,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isMonitoring ? Colors.red : Colors.green,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  _isMonitoring ? Icons.stop : Icons.play_arrow,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _isMonitoring ? 'Stop Monitoring' : 'Start Monitoring',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: _isDarkMode
+                ? Colors.white.withOpacity(0.1)
+                : Colors.black.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: IconButton(
+            onPressed: _resetDetection,
+            icon: Icon(
+              Icons.refresh,
+              color: _isDarkMode ? Colors.white : Colors.black,
+              size: 24,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusInfo() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _isDarkMode ? Colors.white.withOpacity(0.05) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _isDarkMode
+              ? Colors.white.withOpacity(0.1)
+              : Colors.black.withOpacity(0.1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Status Information',
+            style: TextStyle(
+              color: _isDarkMode ? Colors.white : Colors.black87,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildStatusRow(
+            'Connection',
+            _isConnected ? 'Connected' : 'Disconnected',
+            _isConnected ? Colors.green : Colors.red,
+            Icons.wifi,
+          ),
+          const SizedBox(height: 8),
+          _buildStatusRow(
+            'Monitoring',
+            _isMonitoring ? 'Active' : 'Inactive',
+            _isMonitoring ? Colors.green : Colors.grey,
+            Icons.visibility,
+          ),
+          const SizedBox(height: 8),
+          _buildStatusRow(
+            'Voice Alerts',
+            _voiceAlertService.isInitialized ? 'Enabled' : 'Disabled',
+            _voiceAlertService.isInitialized ? Colors.green : Colors.grey,
+            Icons.volume_up,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusRow(
+      String label, String value, Color color, IconData icon) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          color: color,
+          size: 16,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: _isDarkMode ? Colors.white70 : Colors.black54,
+              fontSize: 14,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}

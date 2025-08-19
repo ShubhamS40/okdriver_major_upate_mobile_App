@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:okdriver/bottom_navigation_bar/bottom_navigation_bar.dart';
+import 'package:okdriver/service/api_config.dart';
 import 'dart:convert';
 import 'dart:async';
 
@@ -160,7 +161,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen>
       await Future.delayed(const Duration(milliseconds: 1500));
 
       final response = await http.post(
-        Uri.parse('http://98.70.99.58:5000/api/drivers/register'),
+        Uri.parse(ApiConfig.driverRegisterUrl),
         headers: {
           'Content-Type': 'application/json',
         },

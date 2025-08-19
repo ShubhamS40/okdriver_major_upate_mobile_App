@@ -4,6 +4,7 @@ import 'package:okdriver/service/usersession_service.dart';
 import 'package:okdriver/driver_profile_screen/components/about_okdriver.dart';
 import 'package:okdriver/driver_profile_screen/components/language_switch.dart';
 import 'package:okdriver/driver_profile_screen/components/subscription_plan.dart';
+import 'package:okdriver/role_selection/role_selection.dart';
 import 'package:provider/provider.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 
@@ -558,9 +559,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       try {
                         await UserSessionService.instance.logout();
 
-                        // Navigate to login screen
-                        Navigator.of(context).pushNamedAndRemoveUntil(
-                            '/login', (route) => false);
+                        // Navigate to role selection screen (login flow)
+                        Navigator.of(context).pushAndRemoveUntil(
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const RoleSelectionScreen()),
+                            (route) => false);
                       } catch (e) {
                         // Show error
                         ScaffoldMessenger.of(context).showSnackBar(

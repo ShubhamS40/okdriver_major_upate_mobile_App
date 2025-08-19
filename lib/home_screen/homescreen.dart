@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:okdriver/drowsiness_monitoring/dms.dart';
 import 'package:okdriver/service/usersession_service.dart';
 import 'package:okdriver/dashcam/components/camera_selection.dart';
 import 'package:okdriver/okdriver_virtual_assistant/index.dart';
+import 'package:okdriver/role_selection/role_selection.dart';
 
 import 'package:provider/provider.dart';
 import 'package:okdriver/theme/theme_provider.dart';
@@ -233,9 +235,98 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+
+          const SizedBox(width: 12),
+
+          // Logout Button
+          GestureDetector(
+            onTap: _logout,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: _isDarkMode
+                    ? Colors.red.withOpacity(0.2)
+                    : Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _isDarkMode
+                      ? Colors.red.withOpacity(0.3)
+                      : Colors.red.withOpacity(0.2),
+                  width: 1,
+                ),
+              ),
+              child: Icon(
+                Icons.logout_rounded,
+                color: Colors.red,
+                size: 20,
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  void _logout() async {
+    // Show confirmation dialog
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Logout',
+          style: TextStyle(
+            color: _isDarkMode ? Colors.white : Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to logout?',
+          style: TextStyle(
+            color: _isDarkMode ? Colors.white70 : Colors.black54,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(
+                color: _isDarkMode ? Colors.white70 : Colors.black54,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true) {
+      // Perform logout
+      final sessionService = UserSessionService.instance;
+      await sessionService.logout();
+
+      // Navigate back to role selection screen (login flow)
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+          (route) => false,
+        );
+      }
+    }
   }
 
   Widget _buildSafetyFeatures() {
@@ -319,7 +410,14 @@ class _HomeScreenState extends State<HomeScreen> {
         gradient: const LinearGradient(
           colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
         ),
-        onTap: () => _onFeatureTap('Drowsiness Monitoring'),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const DrowsinessMonitoringScreen(),
+            ),
+          );
+        },
       ),
     );
   }

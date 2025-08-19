@@ -5,7 +5,9 @@ import 'package:okdriver/bottom_navigation_bar/bottom_navigation_bar.dart';
 import 'package:okdriver/driver_auth_screen/driver_registration_screen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:okdriver/service/usersession_service.dart';
+import 'package:okdriver/service/api_config.dart';
 import 'package:provider/provider.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:convert';
 import 'dart:async';
 
@@ -55,6 +57,46 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
   int _resendTimer = 30;
   bool _canResend = false;
 
+  // Get device information
+  Future<String> _getDeviceInfo() async {
+    try {
+      DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+      if (Theme.of(context).platform == TargetPlatform.android) {
+        AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+        return 'Android ${androidInfo.version.release} - ${androidInfo.model}';
+      } else if (Theme.of(context).platform == TargetPlatform.iOS) {
+        IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
+        return 'iOS ${iosInfo.systemVersion} - ${iosInfo.model}';
+      }
+      return 'Unknown Device';
+    } catch (e) {
+      print('Error getting device info: $e');
+      return 'Unknown Device';
+    }
+  }
+
+  // Test backend connection
+  Future<void> _testBackendConnection() async {
+    try {
+      print('Testing backend connection...');
+      final response = await http.get(
+        Uri.parse(ApiConfig.healthCheckUrl),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 10));
+
+      print('Backend connection test response: ${response.statusCode}');
+      print('Backend connection test body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        print('Backend connection successful');
+      } else {
+        print('Backend connection failed with status: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Backend connection test error: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +104,9 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
     _setupListeners();
     _startResendTimer();
     _checkExistingSession();
+
+    // Test backend connection on init
+    _testBackendConnection();
 
     // Initialize _isDarkMode from ThemeProvider
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -260,90 +305,135 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
       // Simulate API delay for better UX
       await Future.delayed(const Duration(milliseconds: 1500));
 
-      final response = await http.post(
-        Uri.parse('http://98.70.99.58:5000/api/driver/verify-otp'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: json.encode({
-          'phone': widget.phoneNumber,
-          'code': otpCode,
-        }),
-      );
+      print('Verifying OTP for phone: ${widget.phoneNumber}');
+
+      // Get device info
+      final deviceInfo = await _getDeviceInfo();
+      print('Device info: $deviceInfo');
+
+      final response = await http
+          .post(
+            Uri.parse(ApiConfig.verifyOtpUrl),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: json.encode({
+              'phone': widget.phoneNumber,
+              'code': otpCode,
+              'deviceInfo': deviceInfo,
+            }),
+          )
+          .timeout(const Duration(seconds: 30)); // Add timeout
+
+      print('OTP verification response status: ${response.statusCode}');
+      print('OTP verification response body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         HapticFeedback.heavyImpact();
         _showMessage('OTP verified successfully!', isError: false);
 
-        // Check if user is new or existing
-        final bool isNewUser = data['isNewUser'] ?? true;
-        final Map<String, dynamic> user = data['user'] ?? {};
+        // Use UserSessionService to handle login
+        final sessionService = UserSessionService.instance;
+        print('Attempting to create user session...');
+        final success = await sessionService.login(
+            data['user'] ?? {}, data['token'] ?? '', data['sessionId'] ?? '');
 
-        // Navigate based on user status
-        Future.delayed(const Duration(seconds: 1), () {
-          if (isNewUser) {
-            // Navigate to driver registration screen
-            Navigator.pushReplacement(
-              context,
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) =>
-                    DriverRegistrationScreen(
-                  phoneNumber: widget.phoneNumber,
-                  userId: user['id'] ?? '',
+        if (success) {
+          print('User session created successfully');
+          // Check if user is new or existing
+          final bool isNewUser = data['isNewUser'] ?? true;
+          final Map<String, dynamic> user = data['user'] ?? {};
+
+          // Navigate based on user status
+          Future.delayed(const Duration(seconds: 1), () {
+            if (isNewUser) {
+              print('Navigating to driver registration for new user');
+              // Navigate to driver registration screen
+              Navigator.pushReplacement(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      DriverRegistrationScreen(
+                    phoneNumber: widget.phoneNumber,
+                    userId: user['id'] ?? '',
+                  ),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                    return SlideTransition(
+                      position: animation.drive(
+                        Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
+                            .chain(CurveTween(curve: Curves.easeInOut)),
+                      ),
+                      child: child,
+                    );
+                  },
+                  transitionDuration: const Duration(milliseconds: 500),
                 ),
-                transitionsBuilder:
-                    (context, animation, secondaryAnimation, child) {
-                  return SlideTransition(
-                    position: animation.drive(
-                      Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
-                          .chain(CurveTween(curve: Curves.easeInOut)),
-                    ),
-                    child: child,
-                  );
-                },
-                transitionDuration: const Duration(milliseconds: 500),
-              ),
-            );
-          } else {
-            // Navigate to home screen for existing user
-            Navigator.pushReplacement(
-              context,
-              PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) =>
-                    BottomNavScreen(),
-                transitionsBuilder:
-                    (context, animation, secondaryAnimation, child) {
-                  return SlideTransition(
-                    position: animation.drive(
-                      Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
-                          .chain(CurveTween(curve: Curves.easeInOut)),
-                    ),
-                    child: child,
-                  );
-                },
-                transitionDuration: const Duration(milliseconds: 500),
-              ),
-            );
-          }
-        });
+              );
+            } else {
+              print('Navigating to home screen for existing user');
+              // Navigate to home screen for existing user
+              Navigator.pushReplacement(
+                context,
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      BottomNavScreen(),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                    return SlideTransition(
+                      position: animation.drive(
+                        Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
+                            .chain(CurveTween(curve: Curves.easeInOut)),
+                      ),
+                      child: child,
+                    );
+                  },
+                  transitionDuration: const Duration(milliseconds: 500),
+                ),
+              );
+            }
+          });
+        } else {
+          print('Failed to create user session');
+          _showMessage('Failed to create session. Please try again.',
+              isError: true);
+          _shakeOTPFields();
+          _clearOTP();
+        }
       } else {
         final errorData = json.decode(response.body);
-        _showMessage(
-          errorData['message'] ?? 'OTP verification failed',
-          isError: true,
-        );
+        final errorMessage = errorData['error'] ??
+            errorData['message'] ??
+            'OTP verification failed';
+        print('OTP verification failed: $errorMessage');
+        _showMessage(errorMessage, isError: true);
         _shakeOTPFields();
         _clearOTP();
       }
     } catch (e) {
-      _showMessage('Network error. Please try again.', isError: true);
+      print('OTP verification error: $e');
+      String errorMessage = 'Network error. Please try again.';
+
+      if (e.toString().contains('Connection timed out')) {
+        errorMessage =
+            'Connection timed out. Please check your internet connection and try again.';
+      } else if (e.toString().contains('SocketException')) {
+        errorMessage =
+            'Network connection failed. Please check your internet connection.';
+      } else if (e.toString().contains('TimeoutException')) {
+        errorMessage = 'Request timed out. Please try again.';
+      }
+
+      _showMessage(errorMessage, isError: true);
       _shakeOTPFields();
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
-      _loadingController.reset();
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+        _loadingController.reset();
+      }
     }
   }
 
@@ -358,15 +448,22 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
     HapticFeedback.lightImpact();
 
     try {
-      final response = await http.post(
-        Uri.parse('http://98.70.99.58:5000/api/driver/send-otp'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: json.encode({
-          'phone': widget.phoneNumber,
-        }),
-      );
+      print('Resending OTP to phone: ${widget.phoneNumber}');
+
+      final response = await http
+          .post(
+            Uri.parse(ApiConfig.sendOtpUrl),
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: json.encode({
+              'phone': widget.phoneNumber,
+            }),
+          )
+          .timeout(const Duration(seconds: 30)); // Add timeout
+
+      print('Resend OTP response status: ${response.statusCode}');
+      print('Resend OTP response body: ${response.body}');
 
       if (response.statusCode == 200) {
         HapticFeedback.heavyImpact();
@@ -375,18 +472,33 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
         _clearOTP();
       } else {
         final errorData = json.decode(response.body);
-        _showMessage(
-          errorData['message'] ?? 'Failed to resend OTP',
-          isError: true,
-        );
+        final errorMessage = errorData['error'] ??
+            errorData['message'] ??
+            'Failed to resend OTP';
+        print('Resend OTP failed: $errorMessage');
+        _showMessage(errorMessage, isError: true);
       }
     } catch (e) {
       print('Resend OTP error: $e');
-      _showMessage('Network error. Please try again.', isError: true);
+      String errorMessage = 'Network error. Please try again.';
+
+      if (e.toString().contains('Connection timed out')) {
+        errorMessage =
+            'Connection timed out. Please check your internet connection and try again.';
+      } else if (e.toString().contains('SocketException')) {
+        errorMessage =
+            'Network connection failed. Please check your internet connection.';
+      } else if (e.toString().contains('TimeoutException')) {
+        errorMessage = 'Request timed out. Please try again.';
+      }
+
+      _showMessage(errorMessage, isError: true);
     } finally {
-      setState(() {
-        _isResending = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isResending = false;
+        });
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:okdriver/bottom_navigation_bar/bottom_navigation_bar.dart';
+import 'package:okdriver/drowsiness_monitoring/dms.dart';
 import 'package:okdriver/role_selection/role_selection.dart';
 import 'package:okdriver/splashscreen/splashscreen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
@@ -29,7 +30,6 @@ void main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -47,17 +47,7 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: RoleSelectionScreen(),
+      home: const DrowsinessMonitoringScreen(),
     );
-  }
-
-  // Determine initial screen based on login status
-  Widget _getInitialScreen() {
-    final sessionService = UserSessionService.instance;
-    if (sessionService.isLoggedIn) {
-      return BottomNavScreen();
-    } else {
-      return BottomNavScreen();
-    }
   }
 }

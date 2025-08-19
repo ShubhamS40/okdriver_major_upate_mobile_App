@@ -4,6 +4,7 @@ import 'package:country_code_picker/country_code_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:okdriver/driver_auth_screen/verify_otp.dart';
 import 'package:okdriver/theme/theme_provider.dart';
+import 'package:okdriver/service/api_config.dart';
 import 'package:provider/provider.dart';
 import 'dart:convert';
 
@@ -147,7 +148,7 @@ class _SendOtpScreenState extends State<SendOtpScreen>
       // Simulate API delay for better UX
       await Future.delayed(const Duration(milliseconds: 1500));
 
-      final url = Uri.parse('http://98.70.99.58:5000/api/driver/send-otp');
+      final url = Uri.parse(ApiConfig.sendOtpUrl);
       final response = await http.post(
         url,
         headers: {"Content-Type": "application/json"},

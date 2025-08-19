@@ -25,6 +25,28 @@ model Driver {
   emergencyContact  String?  // Optional field
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  
+  // Relations
+  sessions          DriverSession[]
+}
+
+// Driver Session Management
+model DriverSession {
+  id          String   @id @default(uuid())
+  driverId    String
+  token       String   @unique
+  deviceInfo  String?  // Store device information
+  isActive    Boolean  @default(true)
+  lastActivity DateTime @default(now())
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  
+  // Relations
+  driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  
+  @@index([driverId, isActive])
+  @@index([token])
+  @@index([expiresAt])
 }
 
 // INDIVIDUAL DRIVER LOGIN SECTION

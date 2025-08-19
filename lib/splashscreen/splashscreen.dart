@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:okdriver/permissionscreen/permissionscreen.dart';
+import 'package:okdriver/bottom_navigation_bar/bottom_navigation_bar.dart';
 import 'package:okdriver/service/usersession_service.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -18,10 +19,10 @@ class _SplashScreenState extends State<SplashScreen> {
     // Hide status bar
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
 
-    _navigateToHome();
+    _navigateToNextScreen();
   }
 
-  _navigateToHome() async {
+  _navigateToNextScreen() async {
     await Future.delayed(const Duration(seconds: 3));
 
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
@@ -30,14 +31,33 @@ class _SplashScreenState extends State<SplashScreen> {
     if (mounted) {
       final sessionService = UserSessionService.instance;
 
-      if (sessionService.isLoggedIn) {
-        // User is logged in, go to main app
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const PermissionScreen()),
-        );
+      if (sessionService.isLoggedIn && sessionService.authToken != null) {
+        // User is logged in, verify session with backend
+        try {
+          final userData = await sessionService.fetchCurrentUserData();
+          if (userData != null) {
+            // Session is valid, go to main app
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => BottomNavScreen()),
+            );
+          } else {
+            // Session expired or invalid, go to login
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const PermissionScreen()),
+            );
+          }
+        } catch (e) {
+          print('Error verifying session: $e');
+          // On error, go to login
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const PermissionScreen()),
+          );
+        }
       } else {
-        // User is not logged in, go to permission screen (which leads to login)
+        // User is not logged in, go to permission screen (which leads to role selection)
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const PermissionScreen()),

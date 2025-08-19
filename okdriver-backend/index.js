@@ -5,10 +5,10 @@ const cors = require('cors');
 // Driver routes
 const otpRoutes = require('./routes/DriverAuth/otpRoutes');
 const driverRegistration = require('./routes/DriverAuth/driverRegistration');
+const driverAuthRoutes = require('./routes/DriverAuth/driverAuth');
 
 // Company routes
 const companyRoutes = require('./routes/CompanyAuthRoutes/companyAuthRoute');
-
 
 // Admin routes
 const adminPlanRoutes =require('./routes/admin/plan/planRoute')
@@ -23,6 +23,7 @@ app.use(express.json());
 // Routes
 app.use('/api/driver', otpRoutes);
 app.use('/api/drivers', driverRegistration);
+app.use('/api/driver/auth', driverAuthRoutes);
 
 // Company routes
 app.use('/api/company', companyRoutes);
@@ -31,7 +32,6 @@ app.use('/api/company', companyRoutes);
 app.use('/api/admin/plan', adminPlanRoutes);
 
 app.use('/api/admin/auth', require('./routes/admin/adminAuth/adminAuthRoute'));
-
 
 // Health check route
 app.get('/', (req, res) => {

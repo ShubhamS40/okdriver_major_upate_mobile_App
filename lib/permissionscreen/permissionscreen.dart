@@ -4,6 +4,7 @@ import 'package:okdriver/utlis/android14_storage_helper.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
+import 'package:okdriver/role_selection/role_selection.dart';
 
 // Theme Provider for managing light/dark themes
 class ThemeProvider extends ChangeNotifier {
@@ -601,7 +602,7 @@ class _PermissionScreenState extends State<PermissionScreen>
   void _navigateToNextScreen() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => OnboardingScreen()),
+      MaterialPageRoute(builder: (context) => RoleSelectionScreen()),
     );
   }
 
