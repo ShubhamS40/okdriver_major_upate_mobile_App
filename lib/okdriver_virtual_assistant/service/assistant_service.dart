@@ -5,7 +5,7 @@ import 'package:just_audio/just_audio.dart';
 
 class AssistantService {
   // Base URL for the backend API
-  static const String baseUrl = 'http://98.70.99.58:3000';
+  static const String baseUrl = 'http://localhost:3000';
 
   // Audio player instance
   final AudioPlayer _audioPlayer = AudioPlayer();

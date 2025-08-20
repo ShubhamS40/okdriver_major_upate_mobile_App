@@ -34,7 +34,7 @@ face_mesh = None
 # Detection parameters
 EAR_THRESHOLD = 0.25
 MAR_THRESHOLD = 0.5
-DROWSY_FRAME_THRESHOLD = 5  # Reduced for web demo
+DROWSY_FRAME_THRESHOLD = 10  # Reduced for web demo
 YAWNING_FRAME_THRESHOLD = 10  # Reduced for web demo
 
 # MediaPipe landmark indices
@@ -49,6 +49,12 @@ class DrowsinessDetector:
         self.drowsy_events = 0
         self.drowsy_active = False
         self.load_models()
+    
+    def reset(self):
+        self.drowsy_frames = 0
+        self.yawning_frames = 0
+        self.drowsy_events = 0
+        self.drowsy_active = False
         
     def load_models(self):
         global interpreter, rf_model, face_mesh
@@ -189,6 +195,9 @@ class DrowsinessDetector:
             alert_level = 0
             message = "User is alert"
 
+            # Event trigger flags
+            should_alert = False
+
             if final_drowsy:
                 status = "DROWSY"
                 alert_level = 3
@@ -197,6 +206,7 @@ class DrowsinessDetector:
                 if not self.drowsy_active:
                     self.drowsy_events += 1
                     self.drowsy_active = True
+                    should_alert = True
                     
                     if self.drowsy_events >= 3:
                         alert_level = 4
@@ -206,12 +216,16 @@ class DrowsinessDetector:
                 status = "YAWNING"
                 alert_level = 2
                 message = "User is yawning"
+                # Trigger only once when crossing threshold
+                if self.yawning_frames == YAWNING_FRAME_THRESHOLD:
+                    should_alert = True
 
             return {
                 "face_detected": True,
                 "status": status,
                 "alert_level": alert_level,
                 "message": message,
+                "should_alert": should_alert,
                 "metrics": {
                     "ear": round(avg_ear, 3),
                     "mar": round(mar, 3),
@@ -225,6 +239,7 @@ class DrowsinessDetector:
                     "right_eye": right_eye,
                     "mouth": mouth
                 },
+                "frame_size": {"width": w, "height": h},
                 "timestamp": datetime.now().isoformat()
             }
 
@@ -261,6 +276,29 @@ async def websocket_endpoint(websocket: WebSocket):
             elif message["type"] == "ping":
                 await websocket.send_text(json.dumps({
                     "type": "pong"
+                }))
+            
+            elif message["type"] == "reset":
+                detector.reset()
+                await websocket.send_text(json.dumps({
+                    "type": "detection_result",
+                    "data": {
+                        "face_detected": False,
+                        "status": "ALERT",
+                        "alert_level": 0,
+                        "message": "Detection reset",
+                        "should_alert": False,
+                        "metrics": {
+                            "ear": 0.0,
+                            "mar": 0.0,
+                            "cnn_confidence": 0.0,
+                            "drowsy_frames": 0,
+                            "yawning_frames": 0,
+                            "drowsy_events": 0
+                        },
+                        "landmarks": {},
+                        "timestamp": datetime.now().isoformat()
+                    }
                 }))
                 
     except WebSocketDisconnect:

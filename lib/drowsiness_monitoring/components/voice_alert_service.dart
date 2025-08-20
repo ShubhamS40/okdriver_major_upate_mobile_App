@@ -1,6 +1,7 @@
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
+import 'package:just_audio/just_audio.dart';
 
 class VoiceAlertService {
   static final VoiceAlertService _instance = VoiceAlertService._internal();
@@ -12,6 +13,9 @@ class VoiceAlertService {
   bool _isSpeaking = false;
   Timer? _cooldownTimer;
   DateTime? _lastAlertTime;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  Timer? _beepTimer;
+  bool _isBeeping = false;
 
   // Alert messages
   static const Map<String, String> _alertMessages = {
@@ -35,6 +39,15 @@ class VoiceAlertService {
       _flutterTts.setCompletionHandler(() {
         _isSpeaking = false;
       });
+
+      // Preload alarm asset for minimal latency
+      try {
+        await _audioPlayer.setAudioSource(
+          AudioSource.asset('DMS_mobile/alarm.wav'),
+        );
+      } catch (e) {
+        // ignore
+      }
 
       _isInitialized = true;
       print('Voice Alert Service initialized successfully');
@@ -72,6 +85,9 @@ class VoiceAlertService {
 
     // Haptic feedback
     HapticFeedback.heavyImpact();
+
+    // Play alarm once on drowsy event (continuous beeping controlled externally)
+    await _playAlarmOnce();
   }
 
   Future<void> alertYawning() async {
@@ -89,6 +105,8 @@ class VoiceAlertService {
 
     // Light haptic feedback
     HapticFeedback.lightImpact();
+
+    // Optional: single cue beep for yawning (disabled as per request)
   }
 
   Future<void> alertNoFace() async {
@@ -103,6 +121,8 @@ class VoiceAlertService {
 
     await speak(_alertMessages['no_face']!);
     _lastAlertTime = DateTime.now();
+
+    // Optional: single cue beep for no face (disabled)
   }
 
   Future<void> stop() async {
@@ -111,6 +131,7 @@ class VoiceAlertService {
     try {
       await _flutterTts.stop();
       _isSpeaking = false;
+      await stopBeep();
     } catch (e) {
       print('Error stopping TTS: $e');
     }
@@ -119,9 +140,53 @@ class VoiceAlertService {
   Future<void> dispose() async {
     _cooldownTimer?.cancel();
     await stop();
+    try {
+      await _audioPlayer.dispose();
+    } catch (_) {}
     _isInitialized = false;
   }
 
   bool get isSpeaking => _isSpeaking;
   bool get isInitialized => _isInitialized;
+
+  void _startBeepForTenSeconds() {
+    // Deprecated: timer-based beeps removed
+  }
+
+  Future<void> _playAlarmOnce() async {
+    try {
+      if (_audioPlayer.audioSource == null) {
+        await _audioPlayer.setAudioSource(
+          AudioSource.asset('DMS_mobile/alarm.wav'),
+        );
+      }
+      await _audioPlayer.seek(Duration.zero);
+      await _audioPlayer.play();
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  Future<void> stopBeep() async {
+    _beepTimer?.cancel();
+    _isBeeping = false;
+    try {
+      await _audioPlayer.stop();
+    } catch (_) {}
+  }
+
+  void startBipLoop() {
+    if (!_isInitialized) return;
+    if (_isBeeping) return;
+    _isBeeping = true;
+    _beepTimer?.cancel();
+    _beepTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      // ignore: avoid_print
+      print('bip bip');
+      try {
+        await _audioPlayer.stop();
+      } catch (_) {}
+      await _playAlarmOnce();
+    });
+  }
 }

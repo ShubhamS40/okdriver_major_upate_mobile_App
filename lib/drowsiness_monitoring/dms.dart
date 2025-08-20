@@ -28,6 +28,8 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
   WebSocketChannel? _channel;
   Map<String, dynamic>? _detectionResult;
   Map<String, dynamic>? _metrics;
+  bool _canSendFrame = true;
+  String? _latestFramePending;
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -80,7 +82,9 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
 
   Future<void> _connectToWebSocket() async {
     try {
-      final wsUrl = "ws://localhost:8000/ws";
+      // Prefer device-local network. If running backend on same device, use 127.0.0.1 via Android emulator mapping.
+      // Consider exposing this from ApiConfig if needed.
+      final wsUrl = "ws://192.168.0.101:8000/ws";
 
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
@@ -95,7 +99,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       });
 
       // Start ping timer
-      _pingTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      _pingTimer = Timer.periodic(const Duration(seconds: 15), (timer) {
         if (_isConnected && _channel != null) {
           _channel!.sink.add(json.encode({'type': 'ping'}));
         }
@@ -131,6 +135,19 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
 
         // Handle alerts
         _handleAlerts(result);
+
+        // Allow next frame and flush latest pending (drop older ones)
+        if (_isMonitoring && _isConnected) {
+          _canSendFrame = true;
+          if (_latestFramePending != null && _channel != null) {
+            _channel!.sink.add(json.encode({
+              'type': 'frame',
+              'data': _latestFramePending,
+            }));
+            _latestFramePending = null;
+            _canSendFrame = false;
+          }
+        }
       } else if (message['type'] == 'pong') {
         // Connection is alive
         print('WebSocket ping successful');
@@ -142,17 +159,20 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
 
   void _handleAlerts(Map<String, dynamic> result) {
     final status = result['status'];
-    final shouldAlert = result['should_alert'] ?? false;
+    final shouldAlert =
+        result['should_alert'] ?? (result['alert_level'] ?? 0) >= 2;
     final alertLevel = result['alert_level'] ?? 0;
 
     if (shouldAlert && status == 'DROWSY') {
       _voiceAlertService.alertDrowsy(isCritical: alertLevel >= 4);
+      _voiceAlertService.startBipLoop();
       _pulseController.repeat(reverse: true);
     } else if (status == 'YAWNING') {
       _voiceAlertService.alertYawning();
     } else if (status == 'NO_FACE') {
       _voiceAlertService.alertNoFace();
     } else if (status == 'ALERT') {
+      _voiceAlertService.stopBeep();
       _pulseController.stop();
       _pulseController.reset();
     }
@@ -332,19 +352,26 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       builder: (context, child) {
         return Transform.scale(
           scale: _pulseAnimation.value,
-          child: Container(
-            height: 300,
+          child: AspectRatio(
+            aspectRatio: 1.0,
             child: CameraView(
               onFrameCaptured: (frameData) {
                 if (_isMonitoring && _isConnected && _channel != null) {
-                  _channel!.sink.add(json.encode({
-                    'type': 'frame',
-                    'data': frameData,
-                  }));
+                  if (_canSendFrame) {
+                    _canSendFrame = false;
+                    _channel!.sink.add(json.encode({
+                      'type': 'frame',
+                      'data': frameData,
+                    }));
+                  } else {
+                    // Only keep the latest frame; drop older pending
+                    _latestFramePending = frameData;
+                  }
                 }
               },
               isMonitoring: _isMonitoring,
               detectionResult: _detectionResult,
+              shouldCapture: () => _canSendFrame || _latestFramePending == null,
             ),
           ),
         );

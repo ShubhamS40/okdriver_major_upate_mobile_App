@@ -5,17 +5,20 @@ import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:math' as math;
 
 class CameraView extends StatefulWidget {
   final Function(String) onFrameCaptured;
   final bool isMonitoring;
   final Map<String, dynamic>? detectionResult;
+  final bool Function()? shouldCapture;
 
   const CameraView({
     Key? key,
     required this.onFrameCaptured,
     required this.isMonitoring,
     this.detectionResult,
+    this.shouldCapture,
   }) : super(key: key);
 
   @override
@@ -27,6 +30,7 @@ class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
   bool _isInitialized = false;
   bool _isCapturing = false;
   Timer? _captureTimer;
+  bool _isFront = true;
 
   @override
   void initState() {
@@ -63,9 +67,11 @@ class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
         orElse: () => cameras.first,
       );
 
+      _isFront = frontCamera.lensDirection == CameraLensDirection.front;
+
       _controller = CameraController(
         frontCamera,
-        ResolutionPreset.medium,
+        ResolutionPreset.low,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
@@ -86,12 +92,16 @@ class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
     if (!_isInitialized || _isCapturing) return;
 
     _isCapturing = true;
-    _captureTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
-      if (widget.isMonitoring && _isCapturing) {
+    _captureTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      final allow =
+          widget.shouldCapture == null ? true : widget.shouldCapture!();
+      if (widget.isMonitoring && _isCapturing && allow) {
         _captureFrame();
       } else {
-        timer.cancel();
-        _isCapturing = false;
+        if (!widget.isMonitoring || !_isCapturing) {
+          timer.cancel();
+          _isCapturing = false;
+        }
       }
     });
   }
@@ -158,13 +168,38 @@ class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
         borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
-            // Camera preview
-            CameraPreview(_controller!),
-
-            // Face detection overlay
-            if (widget.detectionResult != null &&
-                widget.detectionResult!['face_detected'] == true)
-              _buildFaceOverlay(),
+            // FIXED: Camera preview that fills entire container
+            Positioned.fill(
+              child: Transform(
+                alignment: Alignment.center,
+                transform: _isFront
+                    ? (Matrix4.identity()..rotateY(math.pi))
+                    : Matrix4.identity(),
+                child: AspectRatio(
+                  aspectRatio: _controller!.value.aspectRatio,
+                  child: OverflowBox(
+                    alignment: Alignment.center,
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: _controller!.value.previewSize?.height ?? 1,
+                        height: _controller!.value.previewSize?.width ?? 1,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            CameraPreview(_controller!),
+                            if (widget.detectionResult != null &&
+                                widget.detectionResult!['face_detected'] ==
+                                    true)
+                              _buildFaceOverlay(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
             // Status indicator
             Positioned(
@@ -283,13 +318,28 @@ class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
     final landmarks = widget.detectionResult!['landmarks'];
     if (landmarks == null) return const SizedBox.shrink();
 
-    return CustomPaint(
-      painter: FaceLandmarksPainter(
-        landmarks: landmarks,
-        status: widget.detectionResult!['status'] ?? 'ALERT',
-        alertLevel: widget.detectionResult!['alert_level'] ?? 0,
-      ),
-      child: Container(),
+    final frameSize = widget.detectionResult!['frame_size'];
+    final srcW = (frameSize != null ? (frameSize['width'] ?? 0) : 0).toDouble();
+    final srcH =
+        (frameSize != null ? (frameSize['height'] ?? 0) : 0).toDouble();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SizedBox(
+          width: constraints.maxWidth,
+          height: constraints.maxHeight,
+          child: CustomPaint(
+            painter: FaceLandmarksPainter(
+              landmarks: landmarks,
+              status: widget.detectionResult!['status'] ?? 'ALERT',
+              alertLevel: widget.detectionResult!['alert_level'] ?? 0,
+              sourceWidth: srcW,
+              sourceHeight: srcH,
+              mirrorHorizontally: _isFront,
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -298,11 +348,17 @@ class FaceLandmarksPainter extends CustomPainter {
   final Map<String, dynamic> landmarks;
   final String status;
   final int alertLevel;
+  final double sourceWidth;
+  final double sourceHeight;
+  final bool mirrorHorizontally;
 
   FaceLandmarksPainter({
     required this.landmarks,
     required this.status,
     required this.alertLevel,
+    required this.sourceWidth,
+    required this.sourceHeight,
+    required this.mirrorHorizontally,
   });
 
   @override
@@ -318,29 +374,40 @@ class FaceLandmarksPainter extends CustomPainter {
 
     // Draw left eye
     if (landmarks['left_eye'] != null) {
-      _drawLandmarks(canvas, landmarks['left_eye'], paint, fillPaint);
+      _drawLandmarks(canvas, size, landmarks['left_eye'], paint, fillPaint);
     }
 
     // Draw right eye
     if (landmarks['right_eye'] != null) {
-      _drawLandmarks(canvas, landmarks['right_eye'], paint, fillPaint);
+      _drawLandmarks(canvas, size, landmarks['right_eye'], paint, fillPaint);
     }
 
     // Draw mouth
     if (landmarks['mouth'] != null) {
-      _drawLandmarks(canvas, landmarks['mouth'], paint, fillPaint);
+      _drawLandmarks(canvas, size, landmarks['mouth'], paint, fillPaint);
     }
   }
 
-  void _drawLandmarks(
-      Canvas canvas, List<dynamic> points, Paint paint, Paint fillPaint) {
+  void _drawLandmarks(Canvas canvas, Size size, List<dynamic> points,
+      Paint paint, Paint fillPaint) {
     if (points.isEmpty) return;
 
     final path = Path();
     for (int i = 0; i < points.length; i++) {
       final point = points[i];
-      final x = point[0].toDouble();
-      final y = point[1].toDouble();
+      double x = point[0].toDouble();
+      double y = point[1].toDouble();
+
+      if (sourceWidth > 0 && sourceHeight > 0) {
+        final sx = size.width / sourceWidth;
+        final sy = size.height / sourceHeight;
+        x *= sx;
+        y *= sy;
+      }
+
+      if (mirrorHorizontally) {
+        x = size.width - x;
+      }
 
       if (i == 0) {
         path.moveTo(x, y);

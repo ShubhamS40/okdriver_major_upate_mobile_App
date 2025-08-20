@@ -13,7 +13,7 @@ class MetricsDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Check for drowsiness event completion (when drowsy frames reach 5)
+    // Check for drowsiness event completion (when drowsy frames reach 10)
     _checkDrowsinessEvent();
 
     if (metrics == null) {
@@ -133,8 +133,8 @@ class MetricsDisplay extends StatelessWidget {
   void _checkDrowsinessEvent() {
     if (metrics != null) {
       final drowsyFrames = metrics!['drowsy_frames'] ?? 0;
-      // When drowsy frames reach 5, trigger alert
-      if (drowsyFrames >= 5) {
+      // When drowsy frames reach 10, trigger alert
+      if (drowsyFrames >= 10) {
         print("Bipp Bipp");
         // Optional: Add haptic feedback
         HapticFeedback.vibrate();
@@ -216,7 +216,7 @@ class MetricsDisplay extends StatelessWidget {
   Widget _buildProgressSection() {
     final drowsyFrames = metrics!['drowsy_frames'] ?? 0;
     final yawningFrames = metrics!['yawning_frames'] ?? 0;
-    final maxFrames = 5.0; // Changed from 30.0 to 5.0
+    final maxFrames = 10.0; // progress out of 10
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -255,7 +255,7 @@ class MetricsDisplay extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '$drowsyFrames/5', // Changed from 30 to 5
+                        '$drowsyFrames/10',
                         style: TextStyle(
                           color: isDarkMode ? Colors.white70 : Colors.black54,
                           fontSize: 12,
@@ -270,9 +270,9 @@ class MetricsDisplay extends StatelessWidget {
                         ? Colors.white.withOpacity(0.1)
                         : Colors.grey.withOpacity(0.2),
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      drowsyFrames >= 3
+                      drowsyFrames >= 10
                           ? Colors.red
-                          : Colors.orange, // Adjusted threshold
+                          : (drowsyFrames >= 5 ? Colors.orange : Colors.green),
                     ),
                   ),
                 ],
