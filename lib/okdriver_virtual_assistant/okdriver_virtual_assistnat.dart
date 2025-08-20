@@ -1,5 +1,6 @@
 // This is a barrel file to make it easier to import the voice assistant module
-
+// This file name contains a typo but is kept for backward compatibility.
+export 'okdriver_virtual_assistant_screen.dart';
 import 'package:flutter/material.dart';
 
 export 'index.dart';

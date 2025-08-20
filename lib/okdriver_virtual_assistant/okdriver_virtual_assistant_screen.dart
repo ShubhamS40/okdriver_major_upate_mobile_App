@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:okdriver/okdriver_virtual_assistant/components/conservation_chat_histroy.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:avatar_glow/avatar_glow.dart';
 import 'package:provider/provider.dart';
 import 'package:okdriver/theme/theme_provider.dart';
@@ -8,6 +10,7 @@ import 'package:okdriver/theme/theme_provider.dart';
 import 'components/chat_bubble.dart';
 import 'models/chat_message.dart';
 import 'service/assistant_service.dart';
+// import 'components/conversation_history_screen.dart';
 
 class OkDriverVirtualAssistantScreen extends StatefulWidget {
   const OkDriverVirtualAssistantScreen({super.key});
@@ -16,6 +19,8 @@ class OkDriverVirtualAssistantScreen extends StatefulWidget {
   State<OkDriverVirtualAssistantScreen> createState() =>
       _OkDriverVirtualAssistantScreenState();
 }
+
+enum AssistantPhase { idle, wakeListening, listening, speaking, processing }
 
 class _OkDriverVirtualAssistantScreenState
     extends State<OkDriverVirtualAssistantScreen> {
@@ -31,6 +36,15 @@ class _OkDriverVirtualAssistantScreenState
   late bool _isDarkMode;
   final String _userId = 'default'; // Could be replaced with actual user ID
 
+  // Wake word
+  bool _wakeWordEnabled = true;
+  bool _isWakeListening = false;
+  bool _speechReady = false;
+  DateTime? _lastWakeAt;
+
+  // Interaction phases for dynamic orb
+  AssistantPhase _phase = AssistantPhase.wakeListening;
+
   // Model and speaker selection
   Map<String, dynamic> _availableModels = {};
   Map<String, dynamic> _availableSpeakers = {};
@@ -40,6 +54,10 @@ class _OkDriverVirtualAssistantScreenState
       'varun_chat'; // Default speaker, can also be 'keerti_joy'
   bool _enablePremium = false;
   bool _isLoadingConfig = true;
+
+  // Wake word choice and fast TTS option
+  String _wakeWord = 'okdriver'; // options: 'okdriver' or 'bro'
+  bool _lowLatencyTts = true; // speak immediately using device TTS
 
   @override
   void initState() {
@@ -60,8 +78,11 @@ class _OkDriverVirtualAssistantScreenState
       // Load user settings
       _loadUserSettings();
 
-      // Load conversation history
-      _loadHistory();
+      // Optionally load history in background if needed
+      // _loadHistory();
+      if (_wakeWordEnabled) {
+        _startWakeWordListening();
+      }
     });
   }
 
@@ -75,7 +96,7 @@ class _OkDriverVirtualAssistantScreenState
 
   // Initialize speech recognition
   void _initSpeech() async {
-    await _speech.initialize(
+    _speechReady = await _speech.initialize(
       onStatus: (status) {
         if (status == 'done') {
           setState(() {
@@ -87,6 +108,8 @@ class _OkDriverVirtualAssistantScreenState
         }
       },
     );
+    // ignore: avoid_print
+    print('[OkDriver] Speech initialized: ${_speechReady ? 'OK' : 'FAILED'}');
   }
 
   // Initialize text-to-speech
@@ -97,6 +120,18 @@ class _OkDriverVirtualAssistantScreenState
         .setSpeechRate(0.5); // Slower speech rate for better understanding
     await _flutterTts.setVolume(1.0);
     await _flutterTts.setPitch(1.0);
+    _flutterTts.setStartHandler(() {
+      setState(() {
+        _phase = AssistantPhase.speaking;
+      });
+    });
+    _flutterTts.setCompletionHandler(() {
+      setState(() {
+        _phase = _wakeWordEnabled
+            ? AssistantPhase.wakeListening
+            : AssistantPhase.idle;
+      });
+    });
   }
 
   // Load conversation history
@@ -115,17 +150,23 @@ class _OkDriverVirtualAssistantScreenState
   // Start listening to user's voice
   void _listen() async {
     if (!_isListening) {
-      bool available = await _speech.initialize();
-      if (available) {
+      if (!_speechReady) {
+        _speechReady = await _speech.initialize();
+      }
+      if (_speechReady) {
         setState(() {
           _isListening = true;
           _text = '';
+          _phase = AssistantPhase.listening;
         });
         _speech.listen(
           onResult: (result) {
             setState(() {
               _text = result.recognizedWords;
             });
+            // Log recognized speech to terminal
+            // ignore: avoid_print
+            print('[OkDriver] Recognized: ${result.recognizedWords}');
           },
           localeId:
               "en_IN", // English (India) for better recognition of Indian accent
@@ -134,10 +175,97 @@ class _OkDriverVirtualAssistantScreenState
     } else {
       setState(() {
         _isListening = false;
+        _phase = _wakeWordEnabled
+            ? AssistantPhase.wakeListening
+            : AssistantPhase.idle;
       });
       _speech.stop();
       if (_text.isNotEmpty) {
         _sendMessageToBackend(_text);
+      }
+    }
+  }
+
+  // Wake word continuous listening
+  void _startWakeWordListening() async {
+    if (_isWakeListening || _isListening) return;
+    if (!_speechReady) {
+      _speechReady = await _speech.initialize();
+    }
+    if (!_speechReady) return;
+    setState(() {
+      _isWakeListening = true;
+      _phase = AssistantPhase.wakeListening;
+    });
+    if (kIsWeb) {
+      _speech.listen(
+        onResult: (result) {
+          final phrase = result.recognizedWords.toLowerCase();
+          if (_shouldTriggerWake(phrase)) {
+            _onWakeDetected();
+          }
+        },
+        partialResults: true,
+        localeId: "en_IN",
+      );
+    } else {
+      _speech.listen(
+        onResult: (result) {
+          final phrase = result.recognizedWords.toLowerCase();
+          if (_shouldTriggerWake(phrase)) {
+            _onWakeDetected();
+          }
+        },
+        listenMode: stt.ListenMode.dictation,
+        partialResults: true,
+        localeId: "en_IN",
+        listenFor: const Duration(minutes: 2),
+        pauseFor: const Duration(seconds: 2),
+        cancelOnError: false,
+      );
+    }
+  }
+
+  bool _shouldTriggerWake(String phrase) {
+    final now = DateTime.now();
+    if (_lastWakeAt != null && now.difference(_lastWakeAt!).inSeconds < 3) {
+      return false;
+    }
+    final normalized = phrase.replaceAll(',', '').replaceAll(' ', '');
+    if (_wakeWord == 'bro') {
+      return phrase.contains('bro');
+    }
+    return normalized.contains('okdriver') || phrase.contains('ok driver');
+  }
+
+  Future<void> _onWakeDetected() async {
+    _lastWakeAt = DateTime.now();
+    await _speech.stop();
+    if (mounted) {
+      setState(() {
+        _isWakeListening = false;
+      });
+    }
+    // Immediate greeting without hitting backend
+    if (_lowLatencyTts) {
+      await _flutterTts.speak('Hey bro, how can I help you today?');
+    }
+    // Then start active listening for the user's query
+    _listen();
+  }
+
+  void _toggleWakeWord(bool enabled) {
+    setState(() {
+      _wakeWordEnabled = enabled;
+    });
+    if (_wakeWordEnabled) {
+      _startWakeWordListening();
+    } else {
+      if (_isWakeListening) {
+        _speech.stop();
+        setState(() {
+          _isWakeListening = false;
+        });
       }
     }
   }
@@ -224,6 +352,10 @@ class _OkDriverVirtualAssistantScreenState
     _scrollToBottom();
 
     try {
+      // Log outbound request
+      // ignore: avoid_print
+      print(
+          '[OkDriver] Sending to backend => message:"$message", provider:$_selectedModelProvider, model:$_selectedModelName, speaker:$_selectedSpeakerId');
       final data = await _assistantService.sendMessage(
         message,
         _userId,
@@ -234,6 +366,14 @@ class _OkDriverVirtualAssistantScreenState
       );
       final aiResponse = data['response'];
       final audioId = data['audio_id'];
+      final modelUsed = data['model_used'];
+
+      // Log inbound response
+      // ignore: avoid_print
+      print(
+          '[OkDriver] Response <- model:$modelUsed, audioId:${audioId ?? 'null'}');
+      // ignore: avoid_print
+      print('[OkDriver] Assistant: $aiResponse');
 
       final assistantMessage = ChatMessage(text: aiResponse, isUser: false);
 
@@ -315,32 +455,32 @@ class _OkDriverVirtualAssistantScreenState
   }
 
   // Play latest audio file from backend
-  void _playLatestAudio() async {
-    try {
-      setState(() {
-        _isLoading = true;
-      });
+  // void _playLatestAudio() async {
+  //   try {
+  //     setState(() {
+  //       _isLoading = true;
+  //     });
 
-      await _assistantService.playLatestAudio();
+  //     await _assistantService.playLatestAudio();
 
-      setState(() {
-        _isLoading = false;
-      });
-    } catch (e) {
-      print('Error playing latest audio: $e');
-      setState(() {
-        _isLoading = false;
-      });
+  //     setState(() {
+  //       _isLoading = false;
+  //     });
+  //   } catch (e) {
+  //     print('Error playing latest audio: $e');
+  //     setState(() {
+  //       _isLoading = false;
+  //     });
 
-      // Show a snackbar with the error
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to play latest audio'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
+  //     // Show a snackbar with the error
+  //     ScaffoldMessenger.of(context).showSnackBar(
+  //       SnackBar(
+  //         content: Text('Failed to play latest audio'),
+  //         backgroundColor: Colors.red,
+  //       ),
+  //     );
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -355,18 +495,25 @@ class _OkDriverVirtualAssistantScreenState
         foregroundColor: _isDarkMode ? Colors.white : Colors.black87,
         elevation: 0,
         actions: [
+          // History button
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Conversation history',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ConversationHistoryScreen(userId: _userId),
+                ),
+              );
+            },
+          ),
           // Settings button
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: _showSettingsDialog,
             tooltip: 'Settings',
           ),
-          // Play latest audio button
-          IconButton(
-            icon: const Icon(Icons.volume_up),
-            onPressed: _playLatestAudio,
-            tooltip: 'Play latest audio',
-          ),
+          // Removed latest audio button (no backend endpoint)
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: _messages.isNotEmpty ? _clearHistory : null,
@@ -377,29 +524,67 @@ class _OkDriverVirtualAssistantScreenState
       backgroundColor: _isDarkMode ? Colors.black : const Color(0xFFF8F9FA),
       body: Column(
         children: [
-          // Chat messages area
+          // Centered dynamic orb like ChatGPT
           Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _messages.isEmpty ? _buildEmptyState() : _buildChatList(),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeInOut,
+                    width: _phase == AssistantPhase.listening ? 180 : 160,
+                    height: _phase == AssistantPhase.listening ? 180 : 160,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: _phase == AssistantPhase.speaking
+                            ? const [Color(0xFFB388FF), Color(0xFF7C4DFF)]
+                            : _phase == AssistantPhase.listening
+                                ? const [Color(0xFF81D4FA), Color(0xFF29B6F6)]
+                                : _phase == AssistantPhase.processing
+                                    ? const [
+                                        Color(0xFFFFE082),
+                                        Color(0xFFFFCA28)
+                                      ]
+                                    : const [
+                                        Color(0xFFE0E7FF),
+                                        Color(0xFFB388FF)
+                                      ],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (_phase == AssistantPhase.listening ||
+                                  _phase == AssistantPhase.speaking)
+                              ? Colors.deepPurple.withOpacity(0.3)
+                              : Colors.black.withOpacity(0.08),
+                          blurRadius: 24,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _phase == AssistantPhase.listening
+                        ? (_text.isEmpty ? 'Listening…' : _text)
+                        : (_phase == AssistantPhase.wakeListening
+                            ? 'Say "${_wakeWord == 'bro' ? 'Bro' : 'OkDriver'}"'
+                            : 'Tap mic or say "${_wakeWord == 'bro' ? 'Bro' : 'OkDriver'}"'),
+                    style: TextStyle(
+                      color: _isDarkMode ? Colors.white70 : Colors.black54,
+                      fontStyle: FontStyle.italic,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           ),
 
-          // Loading indicator
-          if (_isListening)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Text(
-                _text.isEmpty ? 'Listening...' : _text,
-                style: TextStyle(
-                  color: _isDarkMode ? Colors.white70 : Colors.black54,
-                  fontStyle: FontStyle.italic,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-
-          // Loading indicator
+          // Processing indicator
           if (_isLoading)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -425,7 +610,7 @@ class _OkDriverVirtualAssistantScreenState
               ),
             ),
 
-          // Input area with mic button
+          // Input area with wake word toggle and mic button
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
@@ -441,6 +626,23 @@ class _OkDriverVirtualAssistantScreenState
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                // Wake word toggle
+                Row(
+                  children: [
+                    Switch(
+                      value: _wakeWordEnabled,
+                      onChanged: (v) => _toggleWakeWord(v),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Wake word',
+                      style: TextStyle(
+                        color: _isDarkMode ? Colors.white70 : Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 24),
                 // Mic button with glow effect
                 AvatarGlow(
                   animate: _isListening,
@@ -706,6 +908,49 @@ class _OkDriverVirtualAssistantScreenState
                               });
                             }
                           },
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Wake word choice
+                        const Text('Wake word',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          value: _wakeWord,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'okdriver',
+                              child: Text('OkDriver'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'bro',
+                              child: Text('Bro'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() {
+                                _wakeWord = value;
+                              });
+                            }
+                          },
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Low-latency speech toggle
+                        SwitchListTile(
+                          title: const Text('Low-latency speech'),
+                          subtitle: const Text(
+                              'Use on-device TTS to reply instantly to wake word'),
+                          value: _lowLatencyTts,
+                          onChanged: (v) => setState(() => _lowLatencyTts = v),
                         ),
                       ],
                     ),

@@ -1,7 +1,7 @@
 class ApiConfig {
   // Base URL for all API calls
   // Change this IP address to update all API endpoints at once
-  static const String baseUrl = 'http://localhost:5000';
+  static const String baseUrl = 'http://192.168.0.101:5000';
 
   // API Endpoints
   static const String healthCheck = '/';

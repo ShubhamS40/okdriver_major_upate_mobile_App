@@ -1,6 +1,8 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
 
 // Driver routes
 const otpRoutes = require('./routes/DriverAuth/otpRoutes');
@@ -20,6 +22,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Static audio serving and directory setup (for Voice Assistant)
+const audioDir = path.join(__dirname, 'audio');
+if (!fs.existsSync(audioDir)) {
+  fs.mkdirSync(audioDir, { recursive: true });
+}
+app.use('/audio', express.static(audioDir));
+
 // Routes
 app.use('/api/driver', otpRoutes);
 app.use('/api/drivers', driverRegistration);
@@ -32,6 +41,9 @@ app.use('/api/company', companyRoutes);
 app.use('/api/admin/plan', adminPlanRoutes);
 
 app.use('/api/admin/auth', require('./routes/admin/adminAuth/adminAuthRoute'));
+
+// Voice Assistant routes
+app.use('/api/assistant', require('./routes/DriverVoiceAssistant/driverVoiceAssistant'));
 
 // Health check route
 app.get('/', (req, res) => {

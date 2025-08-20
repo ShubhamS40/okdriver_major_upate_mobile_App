@@ -30,6 +30,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
   Map<String, dynamic>? _metrics;
   bool _canSendFrame = true;
   String? _latestFramePending;
+  int? _localDrowsyFrames;
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -43,6 +44,8 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     super.initState();
     _initializeAnimations();
     _initializeServices();
+    // Initialize local metrics trackers
+    _localDrowsyFrames = 0;
   }
 
   @override
@@ -128,9 +131,33 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       if (message['type'] == 'detection_result') {
         final result = message['data'];
 
+        // Copy metrics to mutate locally
+        final Map<String, dynamic> newMetrics =
+            Map<String, dynamic>.from(result['metrics'] ?? {});
+
+        // Apply EAR-based local drowsy frame increment when ear <= 0.05
+        final earValue = (newMetrics['ear'] is num)
+            ? (newMetrics['ear'] as num).toDouble()
+            : 0.0;
+        if (earValue > 0 && earValue <= 0.05) {
+          _localDrowsyFrames = (_localDrowsyFrames ?? 0) + 1;
+          // ignore: avoid_print
+          print(
+              '[DMS] EAR threshold hit (<= 0.05). Local drowsy_frames=$_localDrowsyFrames');
+        }
+
+        // Merge local drowsy frames with server value (take the max)
+        final serverDrowsy = (newMetrics['drowsy_frames'] is num)
+            ? (newMetrics['drowsy_frames'] as num).toInt()
+            : 0;
+        final mergedDrowsyFrames = (_localDrowsyFrames ?? 0) > serverDrowsy
+            ? (_localDrowsyFrames ?? 0)
+            : serverDrowsy;
+        newMetrics['drowsy_frames'] = mergedDrowsyFrames;
+
         setState(() {
           _detectionResult = result;
-          _metrics = result['metrics'];
+          _metrics = newMetrics;
         });
 
         // Handle alerts

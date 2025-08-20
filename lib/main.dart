@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:okdriver/bottom_navigation_bar/bottom_navigation_bar.dart';
 import 'package:okdriver/drowsiness_monitoring/dms.dart';
+import 'package:okdriver/home_screen/homescreen.dart';
 import 'package:okdriver/okdriver_virtual_assistant/index.dart';
 import 'package:okdriver/role_selection/role_selection.dart';
 import 'package:okdriver/splashscreen/splashscreen.dart';
@@ -48,7 +49,7 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: OkDriverVirtualAssistantScreen(),
+      home: HomeScreen(),
     );
   }
 }

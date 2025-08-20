@@ -2,10 +2,11 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/chat_message.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:okdriver/service/api_config.dart';
 
 class AssistantService {
   // Base URL for the backend API
-  static const String baseUrl = 'http://localhost:3000';
+  static const String baseUrl = ApiConfig.baseUrl;
 
   // Audio player instance
   final AudioPlayer _audioPlayer = AudioPlayer();
@@ -20,8 +21,10 @@ class AssistantService {
     bool enablePremium = false,
   }) async {
     try {
+      // ignore: avoid_print
+      print('[OkDriver][HTTP] POST /api/assistant/chat');
       final response = await http.post(
-        Uri.parse('$baseUrl/api/chat'),
+        Uri.parse('$baseUrl/api/assistant/chat'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'message': message,
@@ -34,7 +37,11 @@ class AssistantService {
       );
 
       if (response.statusCode == 200) {
-        return json.decode(response.body);
+        final decoded = json.decode(response.body);
+        // ignore: avoid_print
+        print(
+            '[OkDriver][HTTP] 200 OK body: ${json.encode(decoded).substring(0, decoded.toString().length > 300 ? 300 : json.encode(decoded).length)}');
+        return decoded;
       } else {
         throw Exception('Failed to send message: ${response.statusCode}');
       }
@@ -46,8 +53,10 @@ class AssistantService {
   // Check audio status
   Future<Map<String, dynamic>> checkAudioStatus(String audioId) async {
     try {
+      // ignore: avoid_print
+      print('[OkDriver][HTTP] GET /api/assistant/audio-status/$audioId');
       final response = await http.get(
-        Uri.parse('$baseUrl/api/audio-status/$audioId'),
+        Uri.parse('$baseUrl/api/assistant/audio-status/$audioId'),
       );
 
       if (response.statusCode == 200) {
@@ -60,11 +69,26 @@ class AssistantService {
     }
   }
 
+  // Poll audio status with short backoff for lower perceived latency
+  Future<void> pollAudioAndPlay(String audioId) async {
+    const delays = [500, 700, 900, 1200, 1500];
+    for (final ms in delays) {
+      final status = await checkAudioStatus(audioId);
+      if (status['status'] == 'completed' && status['audio_url'] != null) {
+        await playAudio(status['audio_url']);
+        return;
+      }
+      await Future.delayed(Duration(milliseconds: ms));
+    }
+  }
+
   // Get conversation history
   Future<List<ChatMessage>> getHistory(String userId) async {
     try {
+      // ignore: avoid_print
+      print('[OkDriver][HTTP] GET /api/assistant/history/$userId');
       final response = await http.get(
-        Uri.parse('$baseUrl/api/history/$userId'),
+        Uri.parse('$baseUrl/api/assistant/history/$userId'),
       );
 
       if (response.statusCode == 200) {
@@ -88,8 +112,10 @@ class AssistantService {
   // Clear conversation history
   Future<void> clearHistory(String userId) async {
     try {
+      // ignore: avoid_print
+      print('[OkDriver][HTTP] DELETE /api/assistant/history/$userId');
       final response = await http.delete(
-        Uri.parse('$baseUrl/api/history/$userId'),
+        Uri.parse('$baseUrl/api/assistant/history/$userId'),
       );
 
       if (response.statusCode != 200) {
@@ -121,29 +147,7 @@ class AssistantService {
     }
   }
 
-  // Play latest audio file from backend
-  Future<void> playLatestAudio() async {
-    try {
-      // Get the latest audio file from the backend
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/latest-audio'),
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['audio_url'] != null) {
-          await playAudio(data['audio_url']);
-        } else {
-          throw Exception('No audio URL found');
-        }
-      } else {
-        throw Exception('Failed to get latest audio: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Error playing latest audio: $e');
-      throw Exception('Failed to play latest audio: $e');
-    }
-  }
+  // Removed playLatestAudio; endpoint not provided by backend
 
   // Dispose audio player resources
   void dispose() {
@@ -154,7 +158,7 @@ class AssistantService {
   Future<Map<String, dynamic>> getAvailableConfig() async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/api/config'),
+        Uri.parse('$baseUrl/api/assistant/config'),
       );
 
       if (response.statusCode == 200) {
@@ -171,7 +175,7 @@ class AssistantService {
   Future<Map<String, dynamic>> getUserSettings(String userId) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/api/settings/$userId'),
+        Uri.parse('$baseUrl/api/assistant/settings/$userId'),
       );
 
       if (response.statusCode == 200) {
@@ -194,7 +198,7 @@ class AssistantService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/api/settings/$userId'),
+        Uri.parse('$baseUrl/api/assistant/settings/$userId'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'modelProvider': modelProvider,
