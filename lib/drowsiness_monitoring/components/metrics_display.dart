@@ -216,7 +216,7 @@ class MetricsDisplay extends StatelessWidget {
   Widget _buildProgressSection() {
     final drowsyFrames = metrics!['drowsy_frames'] ?? 0;
     final yawningFrames = metrics!['yawning_frames'] ?? 0;
-    final maxFrames = 10.0; // progress out of 10
+    final maxFrames = 20.0; // progress out of 20
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -255,7 +255,7 @@ class MetricsDisplay extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '$drowsyFrames/10',
+                        '$drowsyFrames/20',
                         style: TextStyle(
                           color: isDarkMode ? Colors.white70 : Colors.black54,
                           fontSize: 12,
@@ -265,7 +265,7 @@ class MetricsDisplay extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   LinearProgressIndicator(
-                    value: drowsyFrames / maxFrames,
+                    value: drowsyFrames / 20.0,
                     backgroundColor: isDarkMode
                         ? Colors.white.withOpacity(0.1)
                         : Colors.grey.withOpacity(0.2),

@@ -7,6 +7,7 @@ import 'package:okdriver/service/api_config.dart';
 import 'components/camera_view.dart';
 import 'components/metrics_display.dart';
 import 'components/voice_alert_service.dart';
+import 'components/assistant_dialog.dart';
 import 'dart:convert';
 import 'dart:async';
 
@@ -39,12 +40,17 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
   Timer? _connectionTimer;
   Timer? _pingTimer;
 
+  // Assistant dialog state
+  bool _showAssistantDialog = false;
+  int _drowsyEvents = 0;
+  bool _assistantDialogShown = false;
+
   @override
   void initState() {
     super.initState();
     _initializeAnimations();
     _initializeServices();
-    // Initialize local metrics trackers
+    // Initialize local metrics trackers with default value 10
     _localDrowsyFrames = 0;
   }
 
@@ -87,7 +93,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     try {
       // Prefer device-local network. If running backend on same device, use 127.0.0.1 via Android emulator mapping.
       // Consider exposing this from ApiConfig if needed.
-      final wsUrl = "ws://192.168.0.101:8000/ws";
+      final wsUrl = "ws://20.204.177.196:8000/ws";
 
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));
 
@@ -194,6 +200,14 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       _voiceAlertService.alertDrowsy(isCritical: alertLevel >= 4);
       _voiceAlertService.startBipLoop();
       _pulseController.repeat(reverse: true);
+
+      // Increment drowsy events counter
+      _drowsyEvents++;
+
+      // Show assistant dialog after 3 drowsy events
+      if (_drowsyEvents >= 3 && !_assistantDialogShown) {
+        _showAssistantBottomSheet();
+      }
     } else if (status == 'YAWNING') {
       _voiceAlertService.alertYawning();
     } else if (status == 'NO_FACE') {
@@ -203,6 +217,33 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       _pulseController.stop();
       _pulseController.reset();
     }
+  }
+
+  void _showAssistantBottomSheet() {
+    setState(() {
+      _assistantDialogShown = true;
+    });
+
+    // Stop beeping while assistant is talking
+    _voiceAlertService.stopBeep();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => AssistantDialog(
+        drowsyEvents: _drowsyEvents,
+        onDialogClosed: (responded) {
+          setState(() {
+            _assistantDialogShown = false;
+            // Reset drowsy events counter if driver responded
+            if (responded) {
+              _drowsyEvents = 0;
+            }
+          });
+        },
+      ),
+    );
   }
 
   void _handleWebSocketError(error) {
