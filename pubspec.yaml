@@ -60,6 +60,7 @@ dependencies:
   device_info_plus: ^11.3.0
   porcupine_flutter: ^3.0.5
   flutter_map: ^8.1.1
+  geolocator: ^10.1.0
   
 
 dev_dependencies:

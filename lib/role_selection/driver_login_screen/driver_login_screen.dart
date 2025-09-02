@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:okdriver/home_screen/homescreen.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:okdriver/service/api_config.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:okdriver/role_selection/driver_login_screen/components/driver_login_form.dart';
 import 'package:okdriver/role_selection/driver_login_screen/components/driver_login_header.dart';
 
@@ -53,54 +57,84 @@ class _DriverLoginScreenState extends State<DriverLoginScreen>
     super.dispose();
   }
 
-  void _handleLogin() {
+  Future<void> _handleLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
-      // Simulate login process
-      Future.delayed(const Duration(seconds: 2), () {
-        setState(() {
-          _isLoading = false;
-        });
+      try {
+        final response = await http
+            .post(
+              Uri.parse(ApiConfig.vehicleLoginUrl),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'vehicleNumber': _vehicleNumberController.text.trim(),
+                'password': _passwordController.text,
+              }),
+            )
+            .timeout(const Duration(seconds: 20));
 
-        // Check if this is a fleet operator driver login
-        // In a real app, this would be determined by API response
-        bool isFleetOperatorDriver =
-            true; // For now, always true as per requirements
+        if (!mounted) return;
 
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Login successful! Navigating to Home Screen...')),
-        );
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
 
-        // Navigate to home screen after successful login
-        Future.delayed(const Duration(milliseconds: 500), () {
-          Navigator.pushAndRemoveUntil(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (context, animation, secondaryAnimation) =>
-                  isFleetOperatorDriver
-                      ? FleetDriverBottomNavScreen()
-                      : HomeScreen(),
-              transitionsBuilder:
-                  (context, animation, secondaryAnimation, child) {
-                return SlideTransition(
-                  position: animation.drive(
-                    Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
-                        .chain(CurveTween(curve: Curves.easeInOut)),
-                  ),
-                  child: child,
-                );
-              },
-              transitionDuration: const Duration(milliseconds: 500),
-            ),
-            (route) => false,
+          // Store vehicle number for location tracking
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(
+              'current_vehicle_number', _vehicleNumberController.text.trim());
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Login successful! Navigating...')),
           );
-        });
-      });
+
+          Future.delayed(const Duration(milliseconds: 500), () {
+            Navigator.pushAndRemoveUntil(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    FleetDriverBottomNavScreen(),
+                transitionsBuilder:
+                    (context, animation, secondaryAnimation, child) {
+                  return SlideTransition(
+                    position: animation.drive(
+                      Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
+                          .chain(CurveTween(curve: Curves.easeInOut)),
+                    ),
+                    child: child,
+                  );
+                },
+                transitionDuration: const Duration(milliseconds: 500),
+              ),
+              (route) => false,
+            );
+          });
+        } else {
+          String errorMessage = 'Login failed';
+          try {
+            final err = jsonDecode(response.body);
+            if (err is Map && err['message'] is String) {
+              errorMessage = err['message'];
+            }
+          } catch (_) {}
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(errorMessage)),
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Network error: $e')),
+        );
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     }
   }
 

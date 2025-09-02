@@ -5,6 +5,9 @@ import 'package:okdriver/home_screen/homescreen.dart';
 import 'package:okdriver/role_selection/client_login_screen/client_otp_screem.dart';
 import 'package:okdriver/role_selection/client_login_screen/component/client_login_form.dart';
 import 'package:okdriver/role_selection/client_login_screen/component/clinet_login_header.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:okdriver/service/api_config.dart';
 
 class ClientLoginScreen extends StatefulWidget {
   const ClientLoginScreen({Key? key}) : super(key: key);
@@ -55,61 +58,82 @@ class _ClientLoginScreenState extends State<ClientLoginScreen>
     super.dispose();
   }
 
-  void _sendOTP() {
+  Future<void> _sendOTP() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
-      // Simulate OTP sending process
-      Future.delayed(const Duration(seconds: 2), () {
-        setState(() {
-          _isLoading = false;
-        });
+      try {
+        final resp = await http
+            .post(
+              Uri.parse(ApiConfig.clientOtpSendUrl),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'email': _emailController.text.trim()}),
+            )
+            .timeout(const Duration(seconds: 20));
 
-        // Show OTP sent message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('OTP sent to ${_emailController.text}'),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
+        if (!mounted) return;
 
-        // Navigate to OTP verification screen
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ClientOTPVerificationScreen(
-              phoneNumber: _emailController.text,
+        if (resp.statusCode == 200) {
+          setState(() {
+            _otpSent = true;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('OTP sent to ${_emailController.text}'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
             ),
-          ),
-        );
-      });
+          );
+        } else {
+          String msg = 'Failed to send OTP';
+          try {
+            final m = jsonDecode(resp.body);
+            if (m['message'] is String) msg = m['message'];
+          } catch (_) {}
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(msg)));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Network error: $e')));
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     }
   }
 
-  void _verifyOTP() {
+  Future<void> _verifyOTP() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
-      // Simulate OTP verification process
-      Future.delayed(const Duration(seconds: 2), () {
-        setState(() {
-          _isLoading = false;
-        });
+      try {
+        final resp = await http
+            .post(
+              Uri.parse(ApiConfig.clientOtpVerifyUrl),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'email': _emailController.text.trim(),
+                'code': _otpController.text.trim()
+              }),
+            )
+            .timeout(const Duration(seconds: 20));
 
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text(
-                  'OTP verified successfully! Navigating to Client Home Screen...')),
-        );
+        if (!mounted) return;
 
-        // Navigate to fleet client bottom navigation screen
-        Future.delayed(const Duration(milliseconds: 500), () {
+        if (resp.statusCode == 200) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('OTP verified! Redirecting...')),
+          );
           Navigator.of(context).pushReplacement(
             PageRouteBuilder(
               pageBuilder: (context, animation, secondaryAnimation) =>
@@ -126,8 +150,27 @@ class _ClientLoginScreenState extends State<ClientLoginScreen>
               },
             ),
           );
-        });
-      });
+        } else {
+          String msg = 'Invalid or expired OTP';
+          try {
+            final m = jsonDecode(resp.body);
+            if (m['message'] is String) msg = m['message'];
+          } catch (_) {}
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(msg)));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Network error: $e')));
+        }
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
     }
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:okdriver/bottom_navigation_bar/components/chat_input_field.dart';
 import 'package:okdriver/bottom_navigation_bar/components/chat_message_bubble.dart';
 import 'package:okdriver/bottom_navigation_bar/components/location_map.dart';
@@ -6,23 +7,160 @@ import 'package:okdriver/driver_profile_screen/driver_profile_screen.dart';
 import 'package:okdriver/home_screen/homescreen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:okdriver/service/location_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Import for OpenStreetMap
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
-class FleetDriverLocationScreen extends StatelessWidget {
+class FleetDriverLocationScreen extends StatefulWidget {
+  @override
+  _FleetDriverLocationScreenState createState() =>
+      _FleetDriverLocationScreenState();
+}
+
+class _FleetDriverLocationScreenState extends State<FleetDriverLocationScreen> {
+  final LocationService _locationService = LocationService.instance;
+  String? _vehicleNumber;
+  bool _isTracking = false;
+  Timer? _statusTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVehicleNumber();
+    _startLocationTracking();
+
+    // Update UI every second to show live status
+    _statusTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _isTracking = _locationService.isTracking;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadVehicleNumber() async {
+    final prefs = await SharedPreferences.getInstance();
+    final vehicleNumber =
+        prefs.getString('current_vehicle_number') ?? 'Unknown Vehicle';
+    setState(() {
+      _vehicleNumber = vehicleNumber;
+    });
+  }
+
+  Future<void> _startLocationTracking() async {
+    if (_vehicleNumber == null || _vehicleNumber == 'Unknown Vehicle') {
+      print('⚠️ No vehicle number available for location tracking');
+      return;
+    }
+
+    final success =
+        await _locationService.startLocationTracking(_vehicleNumber!);
+    if (success) {
+      print('✅ Location tracking started for $_vehicleNumber');
+    } else {
+      print('❌ Failed to start location tracking');
+    }
+  }
+
+  void _stopLocationTracking() {
+    _locationService.stopLocationTracking();
+    print('🛑 Location tracking stopped');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Live Location'),
         backgroundColor: Colors.blue,
+        actions: [
+          IconButton(
+            icon: Icon(_isTracking ? Icons.location_on : Icons.location_off),
+            onPressed:
+                _isTracking ? _stopLocationTracking : _startLocationTracking,
+            tooltip: _isTracking ? 'Stop Tracking' : 'Start Tracking',
+          ),
+        ],
       ),
-      body: LocationMap(
-        initialPosition: LatLng(28.6139, 77.2090), // Default to Delhi, India
-        driverName: 'Rahul Singh',
-        vehicleNumber: 'DL 01 AB 1234',
+      body: Column(
+        children: [
+          // Location Status Card
+          Card(
+            margin: const EdgeInsets.all(16),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        _isTracking ? Icons.location_on : Icons.location_off,
+                        color: _isTracking ? Colors.green : Colors.red,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _isTracking
+                            ? 'Location Tracking Active'
+                            : 'Location Tracking Inactive',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: _isTracking ? Colors.green : Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Vehicle: ${_vehicleNumber ?? 'Loading...'}'),
+                  const SizedBox(height: 8),
+                  Text(
+                      'Status: ${_isTracking ? 'Sending updates every 5 seconds' : 'Not tracking'}'),
+                  if (_locationService.lastKnownPosition != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                        'Last Update: ${_locationService.getFormattedLocation()}'),
+                    if (_locationService.getSpeedKmh() != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                          'Speed: ${_locationService.getSpeedKmh()!.toStringAsFixed(1)} km/h'),
+                    ],
+                    if (_locationService.getHeading() != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                          'Heading: ${_locationService.getHeading()!.toStringAsFixed(0)}°'),
+                    ],
+                  ],
+                ],
+              ),
+            ),
+          ),
+
+          // Map
+          Expanded(
+            child: LocationMap(
+              initialPosition: _locationService.lastKnownPosition != null
+                  ? LatLng(
+                      _locationService.lastKnownPosition!.latitude,
+                      _locationService.lastKnownPosition!.longitude,
+                    )
+                  : const LatLng(28.6139, 77.2090), // Default to Delhi, India
+              driverName: 'Fleet Driver',
+              vehicleNumber: _vehicleNumber ?? 'Unknown',
+            ),
+          ),
+        ],
       ),
     );
   }

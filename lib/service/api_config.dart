@@ -1,7 +1,7 @@
 class ApiConfig {
   // Base URL for all API calls
-  // Change this IP address to update all API endpoints at once
-  static const String baseUrl = 'http://20.204.177.196:5000';
+  // Use localhost for local development; switch to production IP when deploying
+  static const String baseUrl = 'http://192.168.0.101:5000';
 
   // API Endpoints
   static const String healthCheck = '/';
@@ -16,6 +16,12 @@ class ApiConfig {
   // Company Authentication Endpoints
   static const String companyLogin = '/api/company/login';
   static const String companyRegister = '/api/company/register';
+  static const String vehicleLogin = '/api/company/vehicles/login';
+  static const String vehicleLocationUpdate =
+      '/api/company/vehicles/location/update';
+  static const String vehicleLocationGet = '/api/company/vehicles/location';
+  static const String clientOtpSend = '/api/company/clients/otp/send';
+  static const String clientOtpVerify = '/api/company/clients/otp/verify';
 
   // Admin Endpoints
   static const String adminLogin = '/api/admin/auth/login';
@@ -43,4 +49,11 @@ class ApiConfig {
 
   // Helper method to get current driver URL
   static String get currentDriverUrl => getUrl(getCurrentDriver);
+
+  // Helper for vehicle login URL
+  static String get vehicleLoginUrl => getUrl(vehicleLogin);
+  static String get vehicleLocationUpdateUrl => getUrl(vehicleLocationUpdate);
+  static String get vehicleLocationGetUrl => getUrl(vehicleLocationGet);
+  static String get clientOtpSendUrl => getUrl(clientOtpSend);
+  static String get clientOtpVerifyUrl => getUrl(clientOtpVerify);
 }
