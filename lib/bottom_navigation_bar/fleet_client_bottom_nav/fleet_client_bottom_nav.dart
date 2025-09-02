@@ -1,0 +1,623 @@
+import 'package:flutter/material.dart';
+import 'package:okdriver/bottom_navigation_bar/components/chat_input_field.dart';
+import 'package:okdriver/bottom_navigation_bar/components/chat_message_bubble.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/components/vechile_list_item.dart';
+import 'package:okdriver/driver_profile_screen/driver_profile_screen.dart';
+import 'package:okdriver/home_screen/homescreen.dart';
+import 'package:okdriver/theme/theme_provider.dart';
+import 'package:provider/provider.dart';
+
+// Import for OpenStreetMap
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+
+class LocationMap extends StatefulWidget {
+  final LatLng initialPosition;
+  final String driverName;
+  final String vehicleNumber;
+
+  const LocationMap({
+    Key? key,
+    required this.initialPosition,
+    required this.driverName,
+    required this.vehicleNumber,
+  }) : super(key: key);
+
+  @override
+  State<LocationMap> createState() => _LocationMapState();
+}
+
+class _LocationMapState extends State<LocationMap> {
+  bool _isLiveLocationEnabled = true;
+  late final MapController _mapController;
+
+  @override
+  void initState() {
+    super.initState();
+    _mapController = MapController();
+  }
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          // Map
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: widget.initialPosition,
+              initialZoom: 15.0,
+              minZoom: 5.0,
+              maxZoom: 18.0,
+              onTap: (tapPosition, point) {
+                // Handle map tap if needed
+              },
+            ),
+            children: [
+              TileLayer(
+                urlTemplate:
+                    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                subdomains: const ['a', 'b', 'c'],
+                userAgentPackageName: 'com.okdriver.app',
+                maxZoom: 18,
+                errorTileCallback: (tile, error, stackTrace) {
+                  // Handle tile loading errors
+                  debugPrint('Tile loading error: $error');
+                },
+              ),
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    width: 80.0,
+                    height: 80.0,
+                    point: widget.initialPosition,
+                    child: _buildCarMarker(),
+                  ),
+                ],
+              ),
+            ],
+          ),
+
+          // Controls overlay
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 16,
+            right: 16,
+            child: Column(
+              children: [
+                // Zoom controls
+                _buildMapControl(
+                  icon: Icons.add,
+                  onTap: _zoomIn,
+                ),
+                const SizedBox(height: 8),
+                _buildMapControl(
+                  icon: Icons.remove,
+                  onTap: _zoomOut,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _zoomIn() {
+    try {
+      final currentZoom = _mapController.camera.zoom;
+      if (currentZoom < 18.0) {
+        _mapController.move(
+          _mapController.camera.center,
+          (currentZoom + 1).clamp(5.0, 18.0),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error zooming in: $e');
+    }
+  }
+
+  void _zoomOut() {
+    try {
+      final currentZoom = _mapController.camera.zoom;
+      if (currentZoom > 5.0) {
+        _mapController.move(
+          _mapController.camera.center,
+          (currentZoom - 1).clamp(5.0, 18.0),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error zooming out: $e');
+    }
+  }
+
+  Widget _buildCarMarker() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Vehicle number card
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade700,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 6,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Text(
+            widget.vehicleNumber.isNotEmpty ? widget.vehicleNumber : 'N/A',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 11,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Car icon with live indicator
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Icon(
+                Icons.directions_car,
+                color: Colors.blue.shade700,
+                size: 24,
+              ),
+            ),
+            if (_isLiveLocationEnabled)
+              Positioned(
+                top: 0,
+                right: 0,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: Colors.green,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.green.withOpacity(0.5),
+                        blurRadius: 4,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMapControl({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      elevation: 4,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: Colors.black87,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class FleetClientHomeScreen extends StatefulWidget {
+  @override
+  _FleetClientHomeScreenState createState() => _FleetClientHomeScreenState();
+}
+
+class _FleetClientHomeScreenState extends State<FleetClientHomeScreen> {
+  // Single vehicle data
+  final Vehicle _vehicle = Vehicle(
+    id: '1',
+    name: 'Truck 1',
+    vehicleNumber: 'DL 01 AB 1234',
+    driverName: 'Rahul Singh',
+    status: 'Active',
+    lastUpdated: DateTime.now().subtract(const Duration(minutes: 5)),
+    location: LatLng(28.6139, 77.2090), // Delhi
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDarkMode = themeProvider.isDarkTheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Fleet Vehicle'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Location refreshed')),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Settings coming soon')),
+              );
+            },
+          ),
+        ],
+      ),
+      body: LocationMap(
+        initialPosition: _vehicle.location,
+        driverName: _vehicle.driverName,
+        vehicleNumber: _vehicle.vehicleNumber,
+      ),
+    );
+  }
+}
+
+class FleetClientChatScreen extends StatefulWidget {
+  @override
+  _FleetClientChatScreenState createState() => _FleetClientChatScreenState();
+}
+
+class _FleetClientChatScreenState extends State<FleetClientChatScreen> {
+  final List<ChatMessage> _messages = [];
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load sample messages
+    _loadSampleMessages();
+  }
+
+  void _loadSampleMessages() {
+    final now = DateTime.now();
+
+    _messages.addAll([
+      ChatMessage(
+        id: '1',
+        message: 'Hello! How can I help you with your fleet today?',
+        senderName: 'OK Driver Fleet',
+        senderEmail: 'fleet@okdriver.com',
+        isCompany: true,
+        timestamp: now.subtract(const Duration(days: 1, hours: 2)),
+        isSentByMe: false,
+      ),
+      ChatMessage(
+        id: '2',
+        message: 'I need to check the status of my delivery truck.',
+        senderName: 'Vikram Mehta',
+        senderEmail: 'vikram.m@example.com',
+        isCompany: false,
+        timestamp: now.subtract(const Duration(days: 1, hours: 1, minutes: 45)),
+        isSentByMe: true,
+      ),
+      ChatMessage(
+        id: '3',
+        message:
+            'Your truck is currently active and on schedule. You can check its live location on the Home screen.',
+        senderName: 'OK Driver Fleet',
+        senderEmail: 'fleet@okdriver.com',
+        isCompany: true,
+        timestamp: now.subtract(const Duration(days: 1, hours: 1)),
+        isSentByMe: false,
+      ),
+      ChatMessage(
+        id: '4',
+        message: 'Great! When will the truck reach the warehouse?',
+        senderName: 'Vikram Mehta',
+        senderEmail: 'vikram.m@example.com',
+        isCompany: false,
+        timestamp: now.subtract(const Duration(hours: 22)),
+        isSentByMe: true,
+      ),
+      ChatMessage(
+        id: '5',
+        message:
+            'The truck is estimated to arrive at the warehouse by 2:30 PM today.',
+        senderName: 'OK Driver Fleet',
+        senderEmail: 'fleet@okdriver.com',
+        isCompany: true,
+        timestamp: now.subtract(const Duration(hours: 4)),
+        isSentByMe: false,
+      ),
+    ]);
+  }
+
+  void _handleSendMessage(String message) {
+    if (message.trim().isEmpty) return;
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    // Simulate sending message
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+
+      final newMessage = ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        message: message,
+        senderName: 'Vikram Mehta',
+        senderEmail: 'vikram.m@example.com',
+        isCompany: false,
+        timestamp: DateTime.now(),
+        isSentByMe: true,
+      );
+
+      setState(() {
+        _messages.add(newMessage);
+        _isLoading = false;
+      });
+
+      // Simulate company reply after a delay
+      if (_messages.length % 2 == 0) {
+        _simulateCompanyReply();
+      }
+    });
+  }
+
+  void _simulateCompanyReply() {
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!mounted) return;
+
+      setState(() {
+        _messages.add(
+          ChatMessage(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            message:
+                'Thank you for your message. Our team will process your request shortly.',
+            senderName: 'OK Driver Fleet',
+            senderEmail: 'fleet@okdriver.com',
+            isCompany: true,
+            timestamp: DateTime.now(),
+            isSentByMe: false,
+          ),
+        );
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.blue.shade100,
+              radius: 18,
+              child: Icon(
+                Icons.business,
+                color: Colors.blue.shade700,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'OK Driver Fleet',
+                  style: TextStyle(fontSize: 16),
+                ),
+                Text(
+                  'Online',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.green,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.call),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Calling OK Driver Fleet...')),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.more_vert),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('More options coming soon')),
+              );
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Chat messages
+          Expanded(
+            child: _messages.isEmpty
+                ? Center(
+                    child: Text(
+                      'No messages yet',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _messages.length,
+                    padding: const EdgeInsets.all(16),
+                    reverse: false,
+                    itemBuilder: (context, index) {
+                      final message = _messages[index];
+                      return ChatMessageBubble(
+                        message: message.message,
+                        senderName: message.senderName,
+                        senderEmail: message.senderEmail,
+                        isCompany: message.isCompany,
+                        timestamp: message.timestamp,
+                        isSentByMe: message.isSentByMe,
+                      );
+                    },
+                  ),
+          ),
+
+          // Input field
+          ChatInputField(
+            onSendMessage: _handleSendMessage,
+            isLoading: _isLoading,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ChatMessage {
+  final String id;
+  final String message;
+  final String senderName;
+  final String senderEmail;
+  final bool isCompany;
+  final DateTime timestamp;
+  final bool isSentByMe;
+
+  ChatMessage({
+    required this.id,
+    required this.message,
+    required this.senderName,
+    required this.senderEmail,
+    required this.isCompany,
+    required this.timestamp,
+    required this.isSentByMe,
+  });
+}
+
+// Vehicle class definition
+class Vehicle {
+  final String id;
+  final String name;
+  final String vehicleNumber;
+  final String driverName;
+  final String status;
+  final DateTime lastUpdated;
+  final LatLng location;
+
+  Vehicle({
+    required this.id,
+    required this.name,
+    required this.vehicleNumber,
+    required this.driverName,
+    required this.status,
+    required this.lastUpdated,
+    required this.location,
+  });
+}
+
+class FleetClientBottomNavScreen extends StatefulWidget {
+  @override
+  _FleetClientBottomNavScreenState createState() =>
+      _FleetClientBottomNavScreenState();
+}
+
+class _FleetClientBottomNavScreenState
+    extends State<FleetClientBottomNavScreen> {
+  int _selectedIndex = 0;
+
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    _screens = [
+      FleetClientHomeScreen(),
+      FleetClientChatScreen(),
+      ProfileScreen(),
+    ];
+  }
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Access the theme provider
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final isDarkMode = themeProvider.isDarkTheme;
+
+    return Scaffold(
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _screens,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        backgroundColor: isDarkMode ? Colors.black : Colors.white,
+        selectedItemColor: isDarkMode ? Colors.white : Colors.blue,
+        unselectedItemColor: isDarkMode ? Colors.grey : Colors.grey.shade600,
+        type: BottomNavigationBarType.fixed,
+        elevation: 8.0,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.chat),
+            label: 'Chat',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
+      ),
+    );
+  }
+}

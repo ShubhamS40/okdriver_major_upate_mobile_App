@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/fleet_client_bottom_nav.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav.dart';
 import 'package:okdriver/home_screen/homescreen.dart';
+import 'package:okdriver/role_selection/role_selection.dart';
 import 'package:okdriver/splashscreen/splashscreen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:okdriver/language/language_provider.dart';
@@ -45,7 +48,7 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: SplashScreen(),
+      home: RoleSelectionScreen(),
     );
   }
 }

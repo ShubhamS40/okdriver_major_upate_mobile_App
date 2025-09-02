@@ -26,10 +26,10 @@ const loginCompany = async (req, res) => {
     });
 
     // 4️⃣ Check if company has an active subscription
-    const activeSubscription = await prisma.subscription.findFirst({
+    const activeSubscription = await prisma.companySubscription.findFirst({
       where: {
         companyId: company.id,
-        status: 'ACTIVE', // ✅ use enum value from your schema
+        status: 'ACTIVE', // matches SubscriptionStatus enum
         endAt: { gte: new Date() } // ✅ checks if subscription is still valid
       },
       include: { plan: true }
@@ -37,7 +37,7 @@ const loginCompany = async (req, res) => {
 
     if (!activeSubscription) {
       // ❌ No active subscription → send available plans for selection
-      const plans = await prisma.plan.findMany({
+      const plans = await prisma.companyPlan.findMany({
         orderBy: { createdAt: 'desc' }
       });
 

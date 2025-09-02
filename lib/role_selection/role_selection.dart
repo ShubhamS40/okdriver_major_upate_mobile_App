@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:okdriver/onboarding_screen/onboardind.dart';
+import 'package:okdriver/role_selection/vechile_owner_screen/vechile_owner_screen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
+// import 'package:okdriver/role_selection/vehicle_owner_screen/vehicle_owner_screen.dart';
+import 'package:okdriver/role_selection/fleet_operator_screen/fleet_operator_screen.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({Key? key}) : super(key: key);
@@ -114,24 +116,41 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
 
   void _handleRoleSelection(int roleIndex) {
     switch (roleIndex) {
-      case 0: // Individual Driver
-        _navigateToIndividualDriver();
+      case 0: // Vehicle Owner
+        _navigateToVehicleOwner();
         break;
-      case 1: // Company User
-        _showComingSoonDialog('Company User');
-        break;
-      case 2: // Company Driver
-        _showComingSoonDialog('Company Driver');
+      case 1: // Fleet Operator
+        _navigateToFleetOperator();
         break;
     }
   }
 
-  void _navigateToIndividualDriver() {
+  void _navigateToVehicleOwner() {
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) =>
-            OnboardingScreen(),
+            VehicleOwnerScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: animation.drive(
+              Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
+                  .chain(CurveTween(curve: Curves.easeInOut)),
+            ),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 500),
+      ),
+    );
+  }
+
+  void _navigateToFleetOperator() {
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            FleetOperatorScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return SlideTransition(
             position: animation.drive(
@@ -352,11 +371,11 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            // Individual Driver Card
+                            // Vehicle Owner Card
                             _buildRoleCard(
                               index: 0,
                               icon: Icons.person_outline,
-                              title: 'Individual Driver',
+                              title: 'Vehicle Owner',
                               subtitle: 'Own Vehicle Owner',
                               features: ['Smart Dashcam', 'AI Safety'],
                               primaryColor: const Color(0xFF2196F3),
@@ -364,11 +383,11 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
 
                             const SizedBox(height: 16),
 
-                            // Company User Card
+                            // Fleet Operator Card
                             _buildRoleCard(
                               index: 1,
                               icon: Icons.business_outlined,
-                              title: 'Company User',
+                              title: 'Fleet Operator',
                               subtitle: 'Business Admin',
                               features: ['Fleet Management', 'Analytics'],
                               primaryColor: const Color(0xFFFF9800),
@@ -376,15 +395,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
 
                             const SizedBox(height: 16),
 
-                            // Company Driver Card
-                            _buildRoleCard(
-                              index: 2,
-                              icon: Icons.local_shipping_outlined,
-                              title: 'Company Driver',
-                              subtitle: 'Commercial Driver',
-                              features: ['Safety Tracking', 'Performance'],
-                              primaryColor: const Color(0xFF4CAF50),
-                            ),
+                            // Company Driver Card removed
                           ],
                         ),
                       ),
