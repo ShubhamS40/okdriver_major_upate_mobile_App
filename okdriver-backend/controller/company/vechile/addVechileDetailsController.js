@@ -57,3 +57,45 @@ const addVehicle = async (req, res) => {
 };
 
 module.exports = { addVehicle };
+
+// Login vehicle by vehicleNumber and password
+const loginVehicle = async (req, res) => {
+  try {
+    const { vehicleNumber, password } = req.body;
+
+    if (!vehicleNumber || !password) {
+      return res.status(400).json({ message: 'vehicleNumber and password are required' });
+    }
+
+    const vehicle = await prisma.vehicle.findUnique({ where: { vehicleNumber } });
+    if (!vehicle) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    const isMatch = await bcrypt.compare(password, vehicle.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    // TODO: issue real JWT/session; for now return minimal vehicle data
+    return res.status(200).json({
+      message: 'Login successful',
+      vehicle: {
+        id: vehicle.id,
+        vehicleNumber: vehicle.vehicleNumber,
+        model: vehicle.model,
+        type: vehicle.type,
+        companyId: vehicle.companyId,
+        status: vehicle.status,
+        createdAt: vehicle.createdAt,
+      },
+      token: null,
+      sessionId: null,
+    });
+  } catch (error) {
+    console.error('Error logging in vehicle:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+module.exports.loginVehicle = loginVehicle;

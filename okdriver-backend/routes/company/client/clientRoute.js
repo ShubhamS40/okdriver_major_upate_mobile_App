@@ -3,7 +3,9 @@ const {
   getAssignedVehicles,
 } = require('./../../../controller/company/client/getAssignedVechileDetails'); // SAME folder ka route.js import karo
 const {
-  clientLogin
+  clientLogin,
+  sendClientOtp,
+  verifyClientOtp
 } = require('./../../../controller/company/client/clientController'); // SAME folder ka route.js import karo
 const {
   getVehicleChats,sendMessageToVehicle
@@ -45,6 +47,10 @@ router.get('/test-assignment/:listId/:vehicleId', verifyCompanyAuth, (req, res) 
 
 // Login/Register Client
 router.post('/login', clientLogin);
+
+// OTP via email for client login
+router.post('/otp/send', sendClientOtp);
+router.post('/otp/verify', verifyClientOtp);
 
 // Get all assigned vehicles (with last location)
 router.get('/vehicles', verifyClientAuth, getAssignedVehicles);
