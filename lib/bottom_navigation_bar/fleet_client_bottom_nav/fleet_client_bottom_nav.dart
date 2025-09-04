@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:okdriver/bottom_navigation_bar/components/chat_input_field.dart';
 import 'package:okdriver/bottom_navigation_bar/components/chat_message_bubble.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/components/vechile_list_item.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/components/client_vehicle_tracking_screen.dart';
 import 'package:okdriver/driver_profile_screen/driver_profile_screen.dart';
 import 'package:okdriver/home_screen/homescreen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:okdriver/service/client_session_service.dart';
 
 // Import for OpenStreetMap
 import 'package:flutter_map/flutter_map.dart';
@@ -239,59 +241,6 @@ class _LocationMapState extends State<LocationMap> {
             color: Colors.black87,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class FleetClientHomeScreen extends StatefulWidget {
-  @override
-  _FleetClientHomeScreenState createState() => _FleetClientHomeScreenState();
-}
-
-class _FleetClientHomeScreenState extends State<FleetClientHomeScreen> {
-  // Single vehicle data
-  final Vehicle _vehicle = Vehicle(
-    id: '1',
-    name: 'Truck 1',
-    vehicleNumber: 'DL 01 AB 1234',
-    driverName: 'Rahul Singh',
-    status: 'Active',
-    lastUpdated: DateTime.now().subtract(const Duration(minutes: 5)),
-    location: LatLng(28.6139, 77.2090), // Delhi
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    final isDarkMode = themeProvider.isDarkTheme;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Fleet Vehicle'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Location refreshed')),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Settings coming soon')),
-              );
-            },
-          ),
-        ],
-      ),
-      body: LocationMap(
-        initialPosition: _vehicle.location,
-        driverName: _vehicle.driverName,
-        vehicleNumber: _vehicle.vehicleNumber,
       ),
     );
   }
@@ -571,11 +520,24 @@ class _FleetClientBottomNavScreenState
   @override
   void initState() {
     super.initState();
+    // Removed FleetClientHomeScreen() from the screens list
     _screens = [
-      FleetClientHomeScreen(),
+      const ClientVehicleTrackingScreen(),
       FleetClientChatScreen(),
       ProfileScreen(),
     ];
+
+    // Initialize client session service
+    _initializeClientSession();
+  }
+
+  Future<void> _initializeClientSession() async {
+    try {
+      await ClientSessionService.instance.initialize();
+      print('Client session service initialized successfully');
+    } catch (e) {
+      print('Error initializing client session service: $e');
+    }
   }
 
   void _onItemTapped(int index) {
@@ -603,10 +565,11 @@ class _FleetClientBottomNavScreenState
         unselectedItemColor: isDarkMode ? Colors.grey : Colors.grey.shade600,
         type: BottomNavigationBarType.fixed,
         elevation: 8.0,
+        // Removed the Home tab from items
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
+            icon: Icon(Icons.location_on),
+            label: 'Tracking',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.chat),

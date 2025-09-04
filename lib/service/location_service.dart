@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
 import 'package:okdriver/service/api_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:okdriver/service/websocket_location_service.dart';
 
 class LocationService {
   static LocationService? _instance;
@@ -15,6 +16,10 @@ class LocationService {
   bool _isTracking = false;
   String? _currentVehicleNumber;
   StreamSubscription<Position>? _positionStream;
+
+  // WebSocket service for real-time updates
+  final WebSocketLocationService _webSocketService =
+      WebSocketLocationService.instance;
 
   // Location tracking state
   Position? _lastKnownPosition;
@@ -48,6 +53,10 @@ class LocationService {
       // Store vehicle number
       _currentVehicleNumber = vehicleNumber;
       await _saveVehicleNumber(vehicleNumber);
+
+      // Connect to WebSocket for real-time updates
+      await _webSocketService.connect();
+      _webSocketService.subscribeToVehicle(vehicleNumber);
 
       // Start periodic location updates every 5 seconds
       _locationTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
@@ -90,6 +99,12 @@ class LocationService {
 
     _positionStream?.cancel();
     _positionStream = null;
+
+    // Unsubscribe from WebSocket and disconnect
+    if (_currentVehicleNumber != null) {
+      _webSocketService.unsubscribeFromVehicle(_currentVehicleNumber!);
+    }
+    _webSocketService.disconnect();
 
     _isTracking = false;
     _currentVehicleNumber = null;

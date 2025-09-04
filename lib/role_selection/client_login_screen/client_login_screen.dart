@@ -8,6 +8,7 @@ import 'package:okdriver/role_selection/client_login_screen/component/clinet_log
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:okdriver/service/api_config.dart';
+import 'package:okdriver/service/client_session_service.dart';
 
 class ClientLoginScreen extends StatefulWidget {
   const ClientLoginScreen({Key? key}) : super(key: key);
@@ -131,25 +132,81 @@ class _ClientLoginScreenState extends State<ClientLoginScreen>
         if (!mounted) return;
 
         if (resp.statusCode == 200) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('OTP verified! Redirecting...')),
-          );
-          Navigator.of(context).pushReplacement(
-            PageRouteBuilder(
-              pageBuilder: (context, animation, secondaryAnimation) =>
-                  FleetClientBottomNavScreen(),
-              transitionsBuilder:
-                  (context, animation, secondaryAnimation, child) {
-                const begin = Offset(1.0, 0.0);
-                const end = Offset.zero;
-                const curve = Curves.easeInOut;
-                var tween = Tween(begin: begin, end: end)
-                    .chain(CurveTween(curve: curve));
-                var offsetAnimation = animation.drive(tween);
-                return SlideTransition(position: offsetAnimation, child: child);
-              },
-            ),
-          );
+          try {
+            final responseData = jsonDecode(resp.body);
+            print('🔍 OTP verification response: $responseData');
+
+            // Check if we have a token (successful verification)
+            final token = responseData['token'] ?? responseData['accessToken'];
+
+            if (token != null) {
+              // Extract user data from response
+              final userData = responseData['client'] ??
+                  responseData['user'] ??
+                  {
+                    'email': _emailController.text.trim(),
+                    'firstName': responseData['firstName'] ?? '',
+                    'lastName': responseData['lastName'] ?? '',
+                  };
+
+              print('🔑 Token found: ${token.substring(0, 10)}...');
+              print('👤 User data: $userData');
+
+              // Store authentication data
+              final loginSuccess = await ClientSessionService.instance.login(
+                userData,
+                token,
+                DateTime.now()
+                    .millisecondsSinceEpoch
+                    .toString(), // Generate session ID
+              );
+
+              if (loginSuccess) {
+                print('✅ Login successful, navigating to dashboard...');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('OTP verified! Redirecting...'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+
+                // Navigate to client dashboard
+                Navigator.of(context).pushReplacement(
+                  PageRouteBuilder(
+                    pageBuilder: (context, animation, secondaryAnimation) =>
+                        FleetClientBottomNavScreen(),
+                    transitionsBuilder:
+                        (context, animation, secondaryAnimation, child) {
+                      const begin = Offset(1.0, 0.0);
+                      const end = Offset.zero;
+                      const curve = Curves.easeInOut;
+                      var tween = Tween(begin: begin, end: end)
+                          .chain(CurveTween(curve: curve));
+                      var offsetAnimation = animation.drive(tween);
+                      return SlideTransition(
+                          position: offsetAnimation, child: child);
+                    },
+                  ),
+                );
+              } else {
+                throw Exception('Failed to store authentication data');
+              }
+            } else {
+              // No token means verification failed
+              String msg = responseData['message'] ?? 'Invalid or expired OTP';
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(SnackBar(content: Text(msg)));
+            }
+          } catch (parseError) {
+            print('❌ Error parsing OTP response: $parseError');
+            print('📄 Raw response body: ${resp.body}');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error processing response: $parseError'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
         } else {
           String msg = 'Invalid or expired OTP';
           try {

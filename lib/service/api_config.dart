@@ -1,7 +1,7 @@
 class ApiConfig {
   // Base URL for all API calls
   // Use localhost for local development; switch to production IP when deploying
-  static const String baseUrl = 'http://192.168.0.101:5000';
+  static const String baseUrl = 'http://localhost:5000';
 
   // API Endpoints
   static const String healthCheck = '/';
