@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/fleet_client_bottom_nav.dart';
 import 'dart:async';
-import 'package:okdriver/bottom_navigation_bar/components/chat_input_field.dart';
-import 'package:okdriver/bottom_navigation_bar/components/chat_message_bubble.dart';
-import 'package:okdriver/bottom_navigation_bar/components/location_map.dart';
 import 'package:okdriver/driver_profile_screen/driver_profile_screen.dart';
 import 'package:okdriver/home_screen/homescreen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
@@ -166,12 +164,13 @@ class _FleetDriverLocationScreenState extends State<FleetDriverLocationScreen> {
   }
 }
 
-class FleetDriverChatScreen extends StatefulWidget {
+class FleetDriverChatScreenOld extends StatefulWidget {
   @override
-  _FleetDriverChatScreenState createState() => _FleetDriverChatScreenState();
+  _FleetDriverChatScreenOldState createState() =>
+      _FleetDriverChatScreenOldState();
 }
 
-class _FleetDriverChatScreenState extends State<FleetDriverChatScreen> {
+class _FleetDriverChatScreenOldState extends State<FleetDriverChatScreenOld> {
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
 
@@ -368,25 +367,11 @@ class _FleetDriverChatScreenState extends State<FleetDriverChatScreen> {
                     itemCount: _messages.length,
                     padding: const EdgeInsets.all(16),
                     reverse: false,
-                    itemBuilder: (context, index) {
-                      final message = _messages[index];
-                      return ChatMessageBubble(
-                        message: message.message,
-                        senderName: message.senderName,
-                        senderEmail: message.senderEmail,
-                        isCompany: message.isCompany,
-                        timestamp: message.timestamp,
-                        isSentByMe: message.isSentByMe,
-                      );
-                    },
+                    itemBuilder: (context, index) {},
                   ),
           ),
 
           // Input field
-          ChatInputField(
-            onSendMessage: _handleSendMessage,
-            isLoading: _isLoading,
-          ),
         ],
       ),
     );
@@ -414,6 +399,8 @@ class ChatMessage {
 }
 
 class FleetDriverBottomNavScreen extends StatefulWidget {
+  const FleetDriverBottomNavScreen({Key? key}) : super(key: key);
+
   @override
   _FleetDriverBottomNavScreenState createState() =>
       _FleetDriverBottomNavScreenState();
@@ -426,7 +413,6 @@ class _FleetDriverBottomNavScreenState
   final List<Widget> _screens = [
     HomeScreen(),
     FleetDriverLocationScreen(),
-    FleetDriverChatScreen(),
     ProfileScreen(),
   ];
 
