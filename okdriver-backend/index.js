@@ -11,17 +11,18 @@ const driverAuthRoutes = require('./routes/driver/DriverAuth/driverAuth');
 
 // Company routes
 const companyRoutes = require('./routes/company/CompanyAuthRoutes/companyAuthRoute');
+const companyChatRoutes = require('./routes/company/companyChatRoutes');
 
 dotenv.config();
 const app = express();
 const http = require('http').createServer(app);
-const { Server } = require('socket.io');
-const io = new Server(http, {
-  cors: { origin: '*', methods: ['GET','POST'] }
-});
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const jwt = require('jsonwebtoken');
+
+// Initialize Socket.IO
+const { initializeSocketServer } = require('./socket');
+const io = initializeSocketServer(http);
 
 // Middlewares
 app.use(cors());
@@ -102,27 +103,39 @@ io.on('connection', (socket) => {
 
   console.log(`🔗 Socket connected: ${socket.id}, joined room: ${room}`);
 
-  // Send chat message
+  // Send chat message (updated to use VehicleChat model)
   socket.on('chat:send', async (payload, cb) => {
     try {
       const { vehicleId, message } = payload || {};
       const vid = Number(vehicleId || socket.data.vehicleId);
       if (!vid || !message) return cb && cb({ ok: false, error: 'missing fields' });
 
-      // Sender identify
-      let data = { vehicleId: vid, message, senderType: 'CLIENT' };
+      // Get vehicle info to find company
+      const vehicle = await prisma.vehicle.findUnique({
+        where: { id: vid },
+        select: { companyId: true }
+      });
+
+      if (!vehicle) return cb && cb({ ok: false, error: 'vehicle not found' });
+
+      // Sender identify and create VehicleChat data
+      let data = { 
+        vehicleId: vid, 
+        companyId: vehicle.companyId,
+        message, 
+        senderType: 'DRIVER' 
+      };
+      
       if (socket.data.companyId) {
         data.senderType = 'COMPANY';
-        data.senderCompanyId = socket.data.companyId;
       } else if (socket.data.clientId) {
         data.senderType = 'CLIENT';
-        data.senderClientId = socket.data.clientId;
       } else if (socket.data.driver) {
         data.senderType = 'DRIVER';
       }
 
-      // Save chat in DB
-      const chat = await prisma.chatMessage.create({ data });
+      // Save chat in VehicleChat table
+      const chat = await prisma.vehicleChat.create({ data });
 
       // Broadcast to room
       io.to(`vehicle:${vid}`).emit('chat:new', chat);
@@ -134,13 +147,13 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Fetch chat history
+  // Fetch chat history (updated to use VehicleChat model)
   socket.on('chat:history', async (vehicleId, cb) => {
     try {
       const vid = Number(vehicleId || socket.data.vehicleId);
       if (!vid) return cb && cb({ ok: false, error: 'missing vehicleId' });
 
-      const chats = await prisma.chatMessage.findMany({
+      const chats = await prisma.vehicleChat.findMany({
         where: { vehicleId: vid },
         orderBy: { createdAt: 'asc' }
       });

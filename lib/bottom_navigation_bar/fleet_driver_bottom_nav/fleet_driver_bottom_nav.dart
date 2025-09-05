@@ -3,9 +3,11 @@ import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/fleet_cli
 import 'dart:async';
 import 'package:okdriver/driver_profile_screen/driver_profile_screen.dart';
 import 'package:okdriver/home_screen/homescreen.dart';
+import 'package:okdriver/role_selection/driver_login_screen/driver_login_screen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:okdriver/service/location_service.dart';
+import 'package:okdriver/service/vehicle_auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/recent_chat_screen.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/select_user_scren.dart';
@@ -213,6 +215,8 @@ class FleetDriverBottomNavScreen extends StatefulWidget {
 class _FleetDriverBottomNavScreenState
     extends State<FleetDriverBottomNavScreen> {
   int _selectedIndex = 0;
+  bool _isLoading = true;
+  bool _isLoggedIn = false;
 
   final List<Widget> _screens = [
     const HomeScreen(),
@@ -220,6 +224,20 @@ class _FleetDriverBottomNavScreenState
     const FleetDriverChatScreen(),
     const ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    final isLoggedIn = await VehicleAuthService.isLoggedIn();
+    setState(() {
+      _isLoggedIn = isLoggedIn;
+      _isLoading = false;
+    });
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -229,6 +247,20 @@ class _FleetDriverBottomNavScreenState
 
   @override
   Widget build(BuildContext context) {
+    // Show loading screen while checking auth status
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    // Show login screen if not authenticated
+    if (!_isLoggedIn) {
+      return const DriverLoginScreen();
+    }
+
     // Access the theme provider
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDarkMode = themeProvider.isDarkTheme;

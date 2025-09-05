@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/model/chat_type.dart';
 import 'package:okdriver/theme/theme_provider.dart';
+import 'package:okdriver/service/socket_service.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -24,11 +25,18 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
   bool _isTyping = false;
   Timer? _typingTimer;
   bool _isAttachmentMenuOpen = false;
+  final SocketService _socketService = SocketService();
+  StreamSubscription? _messageSubscription;
+  StreamSubscription? _connectionSubscription;
 
   @override
   void initState() {
     super.initState();
     _messages = List.from(widget.conversation.messages);
+
+    // Initialize socket connection
+    _initializeSocket();
+
     // If there are no messages, add a system message
     if (_messages.isEmpty) {
       _messages.add(
@@ -49,11 +57,53 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
     });
   }
 
+  void _initializeSocket() async {
+    await _socketService.initializeSocket();
+
+    // Listen for new messages
+    _messageSubscription = _socketService.messageStream.listen((messageData) {
+      if (mounted) {
+        final message = ChatMessage(
+          id: messageData['id'].toString(),
+          message: messageData['message'] ?? '',
+          senderName:
+              messageData['senderType'] == 'COMPANY' ? 'Company' : 'Driver',
+          senderType: messageData['senderType'] == 'COMPANY'
+              ? MessageSenderType.company
+              : MessageSenderType.driver,
+          timestamp: DateTime.parse(messageData['createdAt']),
+          senderId:
+              messageData['senderType'] == 'COMPANY' ? 'company' : 'driver',
+          isSentByMe: messageData['senderType'] == 'DRIVER',
+        );
+
+        setState(() {
+          _messages.add(message);
+        });
+
+        _scrollToBottom();
+      }
+    });
+
+    // Listen for connection status
+    _connectionSubscription =
+        _socketService.connectionStream.listen((isConnected) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+
+    // Load chat history
+    _socketService.getChatHistory();
+  }
+
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
     _typingTimer?.cancel();
+    _messageSubscription?.cancel();
+    _connectionSubscription?.cancel();
     super.dispose();
   }
 
@@ -70,73 +120,30 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
   void _sendMessage() {
     if (_messageController.text.trim().isEmpty) return;
 
+    final messageText = _messageController.text.trim();
+    _messageController.clear();
+
+    // Send message via socket
+    _socketService.sendMessageToCompany(messageText);
+
+    // Add message to local list immediately for better UX
     final message = ChatMessage(
       id: 'msg_${DateTime.now().millisecondsSinceEpoch}',
-      message: _messageController.text.trim(),
-      senderName: 'You', // In a real app, get the current user's name
-      senderType:
-          MessageSenderType.driver, // Assuming the current user is a driver
+      message: messageText,
+      senderName: 'You',
+      senderType: MessageSenderType.driver,
       timestamp: DateTime.now(),
-      senderId: 'current_user', // Replace with actual user ID in production
+      senderId: 'current_user',
       isSentByMe: true,
     );
 
     setState(() {
       _messages.add(message);
-      _messageController.clear();
     });
 
     // Scroll to bottom after adding the message
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollToBottom();
-    });
-
-    // Simulate reply from the other user
-    _simulateReply();
-  }
-
-  void _simulateReply() {
-    // Show typing indicator
-    setState(() {
-      _isTyping = true;
-    });
-
-    // Random delay between 1-3 seconds to simulate typing
-    final delay = Duration(milliseconds: 1000 + math.Random().nextInt(2000));
-    _typingTimer = Timer(delay, () {
-      if (!mounted) return;
-
-      final replies = [
-        'Sure, I understand.',
-        'Let me check that for you.',
-        'Thanks for the information.',
-        'Ill get back to you soon.',
-        'Is there anything else you need?',
-        'That sounds good!',
-        'I appreciate your prompt response.',
-        'Please provide more details.',
-      ];
-
-      final reply = ChatMessage(
-        id: 'reply_${DateTime.now().millisecondsSinceEpoch}',
-        message: replies[math.Random().nextInt(replies.length)],
-        senderName: widget.conversation.user.name,
-        senderType:
-            _getSenderTypeFromUserType(widget.conversation.user.userType),
-        timestamp: DateTime.now(),
-        senderId: widget.conversation.user.id,
-        isSentByMe: false,
-      );
-
-      setState(() {
-        _isTyping = false;
-        _messages.add(reply);
-      });
-
-      // Scroll to bottom after adding the reply
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollToBottom();
-      });
     });
   }
 
@@ -209,6 +216,34 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
           ],
         ),
         actions: [
+          // Connection status indicator
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: _socketService.isConnected ? Colors.green : Colors.red,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  _socketService.isConnected ? Icons.wifi : Icons.wifi_off,
+                  size: 16,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  _socketService.isConnected ? 'Connected' : 'Disconnected',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
           IconButton(
             icon: const Icon(Icons.videocam),
             onPressed: () {

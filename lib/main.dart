@@ -49,7 +49,7 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: FleetDriverBottomNavScreen(),
+      home: RoleSelectionScreen(),
     );
   }
 }

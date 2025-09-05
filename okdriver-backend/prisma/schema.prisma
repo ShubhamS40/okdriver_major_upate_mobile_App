@@ -233,6 +233,7 @@ model Company {
   subscriptions         CompanySubscription[]
   grants                ClientVehicleAccess[]
   sentMessages          ChatMessage[] @relation("CompanySender")
+  vehicleChats          VehicleChat[]
 
   @@index([currentPlanId])
   ClientList ClientList[]
@@ -257,6 +258,7 @@ model Vehicle {
   locations      VehicleLocation[]
   chats          ChatMessage[]
   accesses       ClientVehicleAccess[]
+  vehicleChats   VehicleChat[]
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -354,6 +356,25 @@ model ChatMessage {
   @@index([vehicleId, createdAt])
   @@index([senderCompanyId])
   @@index([senderClientId])
+}
+
+// ---------- VEHICLE CHAT (real-time chat between company and driver) ----------
+model VehicleChat {
+  id              Int        @id @default(autoincrement())
+  vehicleId       Int
+  companyId       Int
+  senderType      SenderType
+  message         String
+  attachmentUrl   String?
+  isRead          Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+
+  vehicle         Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  company         Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([isRead])
 }
 
 // ---------- OTP FOR AUTHENTICATION ----------
