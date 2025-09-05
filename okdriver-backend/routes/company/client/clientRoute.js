@@ -1,6 +1,8 @@
 const express = require('express');
 const {
   getAssignedVehicles,
+  getVehicleLocationHistory,
+  getAssignedVehiclesRealTime,
 } = require('./../../../controller/company/client/getAssignedVechileDetails'); // SAME folder ka route.js import karo
 const {
   clientLogin,
@@ -35,6 +37,16 @@ router.get('/test', (req, res) => {
   res.json({ message: 'Client route is working' });
 });
 
+// Test route for assigned vehicles endpoint
+router.get('/test-assigned-vehicles', (req, res) => {
+  console.log('🚗 Test assigned vehicles endpoint hit');
+  res.json({ 
+    message: 'Assigned vehicles endpoint is working',
+    path: req.path,
+    method: req.method
+  });
+});
+
 // Debug route to test assignment endpoint
 router.get('/test-assignment/:listId/:vehicleId', verifyCompanyAuth, (req, res) => {
   console.log('🔍 Testing assignment endpoint with:', req.params);
@@ -53,7 +65,16 @@ router.post('/otp/send', sendClientOtp);
 router.post('/otp/verify', verifyClientOtp);
 
 // Get all assigned vehicles (with last location)
-router.get('/vehicles', verifyClientAuth, getAssignedVehicles);
+router.get('/assigned-vehicles', verifyClientAuth, (req, res, next) => {
+  console.log('🚗 GET /assigned-vehicles endpoint hit for client:', req.user);
+  next();
+}, getAssignedVehicles);
+
+// Get real-time vehicle data
+router.get('/assigned-vehicles/realtime', verifyClientAuth, getAssignedVehiclesRealTime);
+
+// Get location history for a specific vehicle
+router.get('/assigned-vehicles/:vehicleId/history', verifyClientAuth, getVehicleLocationHistory);
 
 // Send message to a vehicle
 router.post('/chat', verifyClientAuth, sendMessageToVehicle);

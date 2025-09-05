@@ -23,7 +23,10 @@
     "nodemon": "^3.1.10",
     "razorpay": "^2.9.6",
     "together-ai": "^0.22.0",
-    "twilio": "^5.8.0"
+    "twilio": "^5.8.0",
+    "kafkajs": "^2.2.4",
+    "ws": "^8.16.0",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "prisma": "6.12.0"

@@ -247,6 +247,11 @@ model Vehicle {
   type           String?       // e.g., Truck, Bus, Car
   status         VehicleStatus @default(ACTIVE)
   companyId      Int
+  
+  // Last known location for quick access
+  lastLat        Decimal?      @db.Decimal(10,7)
+  lastLng        Decimal?      @db.Decimal(10,7)
+  lastLocationAt DateTime?
 
   company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   locations      VehicleLocation[]
@@ -257,6 +262,7 @@ model Vehicle {
   updatedAt      DateTime @updatedAt
 
   @@index([companyId, status])
+  @@index([lastLocationAt])
 }
 
 // Fast time-series storage of pings

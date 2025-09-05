@@ -7,6 +7,10 @@ import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:okdriver/service/location_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/recent_chat_screen.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/select_user_scren.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/individual_chat_screen.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/model/chat_type.dart';
 
 // Import for OpenStreetMap
 import 'package:flutter_map/flutter_map.dart';
@@ -164,217 +168,17 @@ class _FleetDriverLocationScreenState extends State<FleetDriverLocationScreen> {
   }
 }
 
-class FleetDriverChatScreenOld extends StatefulWidget {
+class FleetDriverChatScreen extends StatefulWidget {
+  const FleetDriverChatScreen({Key? key}) : super(key: key);
+
   @override
-  _FleetDriverChatScreenOldState createState() =>
-      _FleetDriverChatScreenOldState();
+  State<FleetDriverChatScreen> createState() => _FleetDriverChatScreenState();
 }
 
-class _FleetDriverChatScreenOldState extends State<FleetDriverChatScreenOld> {
-  final List<ChatMessage> _messages = [];
-  bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Load sample messages
-    _loadSampleMessages();
-  }
-
-  void _loadSampleMessages() {
-    final now = DateTime.now();
-
-    _messages.addAll([
-      ChatMessage(
-        id: '1',
-        message: 'Good morning! Your shift starts at 9:00 AM today.',
-        senderName: 'OK Driver Fleet',
-        senderEmail: 'fleet@okdriver.com',
-        isCompany: true,
-        timestamp: now.subtract(const Duration(days: 1, hours: 2)),
-        isSentByMe: false,
-      ),
-      ChatMessage(
-        id: '2',
-        message: 'Good morning! I will be starting my shift on time.',
-        senderName: 'Rahul Singh',
-        senderEmail: 'rahul.s@gmail.com',
-        isCompany: false,
-        timestamp: now.subtract(const Duration(days: 1, hours: 1, minutes: 45)),
-        isSentByMe: true,
-      ),
-      ChatMessage(
-        id: '3',
-        message: 'Please pick up the delivery from Warehouse B by 10:30 AM.',
-        senderName: 'OK Driver Fleet',
-        senderEmail: 'fleet@okdriver.com',
-        isCompany: true,
-        timestamp: now.subtract(const Duration(days: 1, hours: 1)),
-        isSentByMe: false,
-      ),
-      ChatMessage(
-        id: '4',
-        message:
-            'I have reached Warehouse B and will pick up the delivery shortly.',
-        senderName: 'Rahul Singh',
-        senderEmail: 'rahul.s@gmail.com',
-        isCompany: false,
-        timestamp: now.subtract(const Duration(hours: 22)),
-        isSentByMe: true,
-      ),
-      ChatMessage(
-        id: '5',
-        message: 'Your next delivery is scheduled for 2:00 PM at City Mall.',
-        senderName: 'OK Driver Fleet',
-        senderEmail: 'fleet@okdriver.com',
-        isCompany: true,
-        timestamp: now.subtract(const Duration(hours: 4)),
-        isSentByMe: false,
-      ),
-      ChatMessage(
-        id: '6',
-        message: 'I am facing heavy traffic. Might be delayed by 15 minutes.',
-        senderName: 'Rahul Singh',
-        senderEmail: 'rahul.s@gmail.com',
-        isCompany: false,
-        timestamp: now.subtract(const Duration(hours: 2)),
-        isSentByMe: true,
-      ),
-      ChatMessage(
-        id: '7',
-        message: 'No problem. Please drive safely and update when you reach.',
-        senderName: 'OK Driver Fleet',
-        senderEmail: 'fleet@okdriver.com',
-        isCompany: true,
-        timestamp: now.subtract(const Duration(hours: 1, minutes: 45)),
-        isSentByMe: false,
-      ),
-    ]);
-  }
-
-  void _handleSendMessage(String message) {
-    if (message.trim().isEmpty) return;
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Simulate sending message
-    Future.delayed(const Duration(milliseconds: 500), () {
-      final newMessage = ChatMessage(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        message: message,
-        senderName: 'Rahul Singh',
-        senderEmail: 'rahul.s@gmail.com',
-        isCompany: false,
-        timestamp: DateTime.now(),
-        isSentByMe: true,
-      );
-
-      setState(() {
-        _messages.add(newMessage);
-        _isLoading = false;
-      });
-
-      // Simulate company reply after a delay
-      if (_messages.length % 2 == 0) {
-        _simulateCompanyReply();
-      }
-    });
-  }
-
-  void _simulateCompanyReply() {
-    Future.delayed(const Duration(seconds: 2), () {
-      setState(() {
-        _messages.add(
-          ChatMessage(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            message:
-                'Thank you for the update. Please continue to follow safety protocols.',
-            senderName: 'OK Driver Fleet',
-            senderEmail: 'fleet@okdriver.com',
-            isCompany: true,
-            timestamp: DateTime.now(),
-            isSentByMe: false,
-          ),
-        );
-      });
-    });
-  }
-
+class _FleetDriverChatScreenState extends State<FleetDriverChatScreen> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: Colors.blue.shade100,
-              radius: 18,
-              child: Icon(
-                Icons.business,
-                color: Colors.blue.shade700,
-                size: 18,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'OK Driver Fleet',
-                  style: TextStyle(fontSize: 16),
-                ),
-                Text(
-                  'Online',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.green,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.call),
-            onPressed: () {
-              // Handle call action
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () {
-              // Show more options
-            },
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Chat messages
-          Expanded(
-            child: _messages.isEmpty
-                ? Center(
-                    child: Text(
-                      'No messages yet',
-                      style: TextStyle(color: Colors.grey.shade600),
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: _messages.length,
-                    padding: const EdgeInsets.all(16),
-                    reverse: false,
-                    itemBuilder: (context, index) {},
-                  ),
-          ),
-
-          // Input field
-        ],
-      ),
-    );
+    return const RecentChatScreen();
   }
 }
 
@@ -411,9 +215,10 @@ class _FleetDriverBottomNavScreenState
   int _selectedIndex = 0;
 
   final List<Widget> _screens = [
-    HomeScreen(),
+    const HomeScreen(),
     FleetDriverLocationScreen(),
-    ProfileScreen(),
+    const FleetDriverChatScreen(),
+    const ProfileScreen(),
   ];
 
   void _onItemTapped(int index) {

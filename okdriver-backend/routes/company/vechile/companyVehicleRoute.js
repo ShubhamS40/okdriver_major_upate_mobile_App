@@ -1,5 +1,5 @@
 const express = require('express');
-const { addVehicle, updateVehicle, deleteVehicle, getAllVehicles, loginVehicle, updateLiveLocation, getLatestLocation } = require('../../../controller/company/vechile/route');
+const { addVehicle, updateVehicle, deleteVehicle, getAllVehicles, loginVehicle, updateLiveLocation, getLatestLocation, getLocationHistory } = require('../../../controller/company/vechile/route');
 const { verifyCompanyAuth } = require('../../../middleware/companyAuth');
 
 const router = express.Router();
@@ -20,6 +20,10 @@ router.post('/location/update', updateLiveLocation);
 // @route   GET /api/company/vehicles/location/:vehicleNumber
 // @desc    Get latest location for a specific vehicle
 router.get('/location/:vehicleNumber', getLatestLocation);
+
+// @route   GET /api/company/vehicles/location/:vehicleNumber/history
+// @desc    Get location history for a specific vehicle with pagination
+router.get('/location/:vehicleNumber/history', getLocationHistory);
 
 // @route   PUT /api/company/vehicles/:id
 // @desc    Update vehicle details

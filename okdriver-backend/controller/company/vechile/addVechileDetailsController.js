@@ -1,6 +1,5 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const bcrypt = require('bcrypt');
 
 // Add a new vehicle
 const addVehicle = async (req, res) => {
@@ -22,14 +21,11 @@ const addVehicle = async (req, res) => {
       return res.status(400).json({ message: "Vehicle with this number already exists" });
     }
 
-    // Hash password before storing
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Create vehicle
+    // 🚫 No hashing, save password as plain text
     const newVehicle = await prisma.vehicle.create({
       data: {
         vehicleNumber,
-        password: hashedPassword,
+        password, // plain text
         model,
         type,
         company: {
@@ -56,8 +52,6 @@ const addVehicle = async (req, res) => {
   }
 };
 
-module.exports = { addVehicle };
-
 // Login vehicle by vehicleNumber and password
 const loginVehicle = async (req, res) => {
   try {
@@ -72,12 +66,11 @@ const loginVehicle = async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const isMatch = await bcrypt.compare(password, vehicle.password);
-    if (!isMatch) {
+    // 🚫 No bcrypt compare, plain text match
+    if (password !== vehicle.password) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    // TODO: issue real JWT/session; for now return minimal vehicle data
     return res.status(200).json({
       message: 'Login successful',
       vehicle: {
@@ -98,4 +91,4 @@ const loginVehicle = async (req, res) => {
   }
 };
 
-module.exports.loginVehicle = loginVehicle;
+module.exports = { addVehicle, loginVehicle };

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/fleet_client_bottom_nav.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/fleet_driver_bottom_nav.dart';
 
 import 'package:okdriver/home_screen/homescreen.dart';
 import 'package:okdriver/role_selection/role_selection.dart';
@@ -48,7 +49,7 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: RoleSelectionScreen(),
+      home: FleetDriverBottomNavScreen(),
     );
   }
 }
