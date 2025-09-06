@@ -78,7 +78,10 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
         );
 
         setState(() {
-          _messages.add(message);
+          // Check if message already exists to avoid duplicates
+          if (!_messages.any((m) => m.id == message.id)) {
+            _messages.add(message);
+          }
         });
 
         _scrollToBottom();

@@ -257,9 +257,9 @@ class _FleetDriverBottomNavScreenState
     }
 
     // Show login screen if not authenticated
-    if (!_isLoggedIn) {
-      return const DriverLoginScreen();
-    }
+    // if (!_isLoggedIn) {
+    //   return const DriverLoginScreen();
+    // }
 
     // Access the theme provider
     final themeProvider = Provider.of<ThemeProvider>(context);

@@ -74,7 +74,7 @@ class ChatConversation {
   final List<ChatMessage> messages;
   final DateTime lastMessageTime;
   final String lastMessageText;
-  final int unreadCount;
+  int unreadCount;
 
   ChatConversation({
     required this.id,

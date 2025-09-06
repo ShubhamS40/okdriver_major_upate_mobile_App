@@ -81,10 +81,15 @@ class _DriverLoginScreenState extends State<DriverLoginScreen>
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
 
-          // Store vehicle number for location tracking
+          // Store vehicle and company information
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString(
               'current_vehicle_number', _vehicleNumberController.text.trim());
+          await prefs.setString('vehicle_token', data['data']['token']);
+          await prefs.setInt('vehicle_id', data['data']['vehicle']['id']);
+          await prefs.setInt('company_id', data['data']['company']['id']);
+          await prefs.setString(
+              'company_name', data['data']['company']['name']);
 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Login successful! Navigating...')),

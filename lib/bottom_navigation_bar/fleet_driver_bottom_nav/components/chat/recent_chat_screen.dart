@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/individual_chat_screen.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/vehicle_company_chat_screen.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/model/chat_type.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/select_user_scren.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class RecentChatScreen extends StatefulWidget {
   const RecentChatScreen({Key? key}) : super(key: key);
@@ -17,12 +19,40 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   List<ChatConversation> _filteredConversations = [];
+  String? _vehicleNumber;
+  String? _companyName;
 
   @override
   void initState() {
     super.initState();
+    _loadVehicleInfo();
     _loadConversations();
     _searchController.addListener(_filterConversations);
+
+    // Get unread count after a delay
+    Future.delayed(const Duration(milliseconds: 1000), () {
+      _getUnreadCount();
+    });
+  }
+
+  void _getUnreadCount() {
+    // This would typically call a service to get unread count
+    // For now, we'll simulate it with a test count
+    print('📊 Getting unread count...');
+
+    // Simulate unread count for testing
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _updateUnreadCount(1); // Test with 1 unread message
+    });
+  }
+
+  Future<void> _loadVehicleInfo() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _vehicleNumber =
+          prefs.getString('current_vehicle_number') ?? 'Unknown Vehicle';
+      _companyName = prefs.getString('company_name') ?? 'Company';
+    });
   }
 
   @override
@@ -33,9 +63,25 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
   }
 
   void _loadConversations() {
-    // Load sample conversations for now
-    // In a real app, this would fetch from an API or local database
-    _conversations = ChatDataSample.getSampleConversations();
+    // Create vehicle-company chat conversation
+    final vehicleCompanyChat = ChatConversation(
+      id: 'vehicle_company_chat',
+      user: ChatUser(
+        id: 'company',
+        name: _companyName ?? 'Company',
+        email: 'company@fleet.com',
+        userType: ChatUserType.company,
+        isOnline: true,
+      ),
+      messages: [],
+      lastMessageTime: DateTime.now(),
+      lastMessageText: 'Start chatting with your company',
+      unreadCount: 0, // This will be updated dynamically
+    );
+
+    // Load sample conversations and add vehicle-company chat at the top
+    final sampleConversations = ChatDataSample.getSampleConversations();
+    _conversations = [vehicleCompanyChat, ...sampleConversations];
     _filteredConversations = List.from(_conversations);
   }
 
@@ -58,14 +104,37 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
   }
 
   void _navigateToChat(ChatConversation conversation) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => IndividualChatScreen(
-          conversation: conversation,
+    if (conversation.id == 'vehicle_company_chat') {
+      // Navigate to vehicle-company chat screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const VehicleCompanyChatScreen(),
         ),
-      ),
-    );
+      ).then((_) {
+        // Reset unread count when returning from chat
+        _updateUnreadCount(0);
+      });
+    } else {
+      // Navigate to individual chat screen for other conversations
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => IndividualChatScreen(
+            conversation: conversation,
+          ),
+        ),
+      );
+    }
+  }
+
+  void _updateUnreadCount(int count) {
+    setState(() {
+      if (_conversations.isNotEmpty) {
+        _conversations[0].unreadCount = count;
+        _filteredConversations = List.from(_conversations);
+      }
+    });
   }
 
   void _navigateToSelectUser() {

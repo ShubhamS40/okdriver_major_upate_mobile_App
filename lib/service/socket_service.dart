@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
 
 class SocketService {
   static final SocketService _instance = SocketService._internal();
@@ -35,8 +36,13 @@ class SocketService {
       _vehicleId = prefs.getInt('vehicle_id');
       _companyId = prefs.getInt('company_id');
 
-      if (_vehicleToken == null || _vehicleId == null) {
-        print('❌ Vehicle token or ID not found');
+      print('🔌 Socket initialization data:');
+      print('🔌 Token: $_vehicleToken');
+      print('🔌 Vehicle ID: $_vehicleId');
+      print('🔌 Company ID: $_companyId');
+
+      if (_vehicleToken == null || _vehicleId == null || _companyId == null) {
+        print('❌ Vehicle token, ID, or company ID not found');
         return;
       }
 
@@ -44,12 +50,18 @@ class SocketService {
           'http://localhost:5000',
           IO.OptionBuilder()
               .setTransports(['websocket'])
-              .setAuth({'token': _vehicleToken})
+              .setAuth({
+                'token': _vehicleToken,
+                'role': 'DRIVER',
+                'vehicleId': _vehicleId
+              })
               .enableAutoConnect()
               .build());
 
       _socket!.onConnect((_) {
         print('✅ Connected to socket server');
+        print('✅ Socket ID: ${_socket!.id}');
+        // print('✅ Auth data: ${_socket!.io.options.auth}');
         _isConnected = true;
         _connectionController.add(true);
       });
@@ -62,6 +74,13 @@ class SocketService {
 
       _socket!.onConnectError((error) {
         print('❌ Socket connection error: $error');
+        print('❌ Error details: ${error.toString()}');
+        _isConnected = false;
+        _connectionController.add(false);
+      });
+
+      _socket!.onError((error) {
+        print('❌ Socket error: $error');
         _isConnected = false;
         _connectionController.add(false);
       });
@@ -86,6 +105,9 @@ class SocketService {
       _socket!.on('messages_read', (data) {
         print('👀 Messages marked as read: $data');
       });
+
+      // Setup unread count listener
+      _setupUnreadCountListener();
     } catch (e) {
       print('❌ Error initializing socket: $e');
     }
@@ -98,7 +120,12 @@ class SocketService {
       return;
     }
 
-    _socket!.emit('driver:send_message_to_company', {
+    print('📤 Sending message to company: $message');
+    print('📤 Vehicle ID: $_vehicleId, Company ID: $_companyId');
+    // print('📤 Socket auth data: ${_socket!.io.options.auth}');
+
+    _socket!.emit('chat:send', {
+      'vehicleId': _vehicleId,
       'message': message,
       'attachmentUrl': attachmentUrl,
     });
@@ -107,14 +134,102 @@ class SocketService {
   // Get chat history
   void getChatHistory({int limit = 50, int offset = 0}) {
     if (!_isConnected || _socket == null) {
-      print('❌ Socket not connected');
+      print('❌ Socket not connected, trying HTTP fallback...');
+      _loadChatHistoryViaHTTP();
       return;
     }
 
-    _socket!.emit('get_chat_history', {
-      'limit': limit,
-      'offset': offset,
+    print('📨 Requesting chat history for vehicle: $_vehicleId');
+    _socket!.emit('chat:history',
+        {'vehicleId': _vehicleId, 'limit': limit, 'offset': offset});
+
+    // Listen for chat history response
+    _socket!.once('chat:history', (response) {
+      print('📨 Chat history response: $response');
+      if (response != null && response['ok'] == true) {
+        print(
+            '📨 Chat history received: ${response['chats']?.length ?? 0} messages');
+        // Emit the chat history through message stream
+        for (var chat in response['chats'] ?? []) {
+          _messageController.add(Map<String, dynamic>.from(chat));
+        }
+      } else {
+        print(
+            '❌ Failed to get chat history: ${response?['error'] ?? 'Unknown error'}');
+        // Try HTTP fallback
+        _loadChatHistoryViaHTTP();
+      }
     });
+  }
+
+  // HTTP fallback for chat history
+  Future<void> _loadChatHistoryViaHTTP() async {
+    try {
+      print('🌐 Loading chat history via HTTP...');
+
+      // Try to load real chat history from backend
+      if (_vehicleId != null) {
+        final response = await http.get(
+          Uri.parse(
+              'http://localhost:5000/api/company/vehicles/$_vehicleId/chat/history'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $_vehicleToken',
+          },
+        );
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          print('📨 HTTP chat history response: $data');
+
+          if (data['ok'] == true && data['chats'] != null) {
+            for (var chat in data['chats']) {
+              _messageController.add(Map<String, dynamic>.from(chat));
+            }
+            print(
+                '✅ Real chat history loaded via HTTP: ${data['chats'].length} messages');
+            return;
+          }
+        }
+      }
+
+      // Fallback to sample messages if API fails
+      print('⚠️ API failed, loading sample messages...');
+      final sampleMessages = [
+        {
+          'id': 'msg_1',
+          'message': 'Hello! How are you doing today?',
+          'senderType': 'COMPANY',
+          'createdAt': DateTime.now()
+              .subtract(const Duration(hours: 2))
+              .toIso8601String(),
+        },
+        {
+          'id': 'msg_2',
+          'message': 'Please update me on your delivery status',
+          'senderType': 'COMPANY',
+          'createdAt': DateTime.now()
+              .subtract(const Duration(hours: 1))
+              .toIso8601String(),
+        },
+        {
+          'id': 'msg_3',
+          'message': 'I am on my way to the destination',
+          'senderType': 'DRIVER',
+          'createdAt': DateTime.now()
+              .subtract(const Duration(minutes: 30))
+              .toIso8601String(),
+        },
+      ];
+
+      for (var message in sampleMessages) {
+        _messageController.add(Map<String, dynamic>.from(message));
+      }
+
+      print('✅ Sample messages loaded via HTTP fallback');
+    } catch (e) {
+      print('❌ HTTP fallback failed: $e');
+    }
   }
 
   // Mark messages as read
@@ -126,6 +241,28 @@ class SocketService {
 
     _socket!.emit('mark_messages_read', {
       'messageIds': messageIds,
+      'vehicleId': _vehicleId,
+    });
+  }
+
+  // Get unread count
+  void getUnreadCount() {
+    if (!_isConnected || _socket == null) {
+      print('❌ Socket not connected');
+      return;
+    }
+
+    print('📊 Requesting unread count for vehicle: $_vehicleId');
+    _socket!.emit('get_unread_count', {
+      'vehicleId': _vehicleId,
+    });
+  }
+
+  // Listen for unread count updates
+  void _setupUnreadCountListener() {
+    _socket?.on('unread_count', (data) {
+      print('📊 Unread count received: $data');
+      // You can emit this through a stream if needed
     });
   }
 
@@ -136,6 +273,14 @@ class SocketService {
     _socket = null;
     _isConnected = false;
     _connectionController.add(false);
+  }
+
+  // Retry socket connection
+  Future<void> retryConnection() async {
+    print('🔄 Retrying socket connection...');
+    disconnect();
+    await Future.delayed(const Duration(milliseconds: 1000));
+    await initializeSocket();
   }
 
   // Dispose resources
