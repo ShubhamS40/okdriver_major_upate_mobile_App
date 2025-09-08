@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:okdriver/service/socket_service.dart';
-import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/model/chat_type.dart';
+import 'package:okdriver/service/client_socket_service.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/components/chat/model/chat_type.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
@@ -8,25 +8,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-class VehicleCompanyChatScreen extends StatefulWidget {
-  const VehicleCompanyChatScreen({Key? key}) : super(key: key);
+class CompanyChatScreen extends StatefulWidget {
+  const CompanyChatScreen({Key? key}) : super(key: key);
 
   @override
-  State<VehicleCompanyChatScreen> createState() =>
-      _VehicleCompanyChatScreenState();
+  State<CompanyChatScreen> createState() => _CompanyChatScreenState();
 }
 
-class _VehicleCompanyChatScreenState extends State<VehicleCompanyChatScreen> {
+class _CompanyChatScreenState extends State<CompanyChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final SocketService _socketService = SocketService();
+  final ClientSocketService _socketService = ClientSocketService();
 
   List<ChatMessage> _messages = [];
   bool _isConnected = false;
   bool _isLoadingHistory = false;
-  String? _vehicleNumber;
+  String? _clientEmail;
   String? _companyName;
-  String? _vehicleId;
+  String? _clientId;
   String? _companyId;
   String? _authToken;
   int _unreadCount = 0;
@@ -36,33 +35,31 @@ class _VehicleCompanyChatScreenState extends State<VehicleCompanyChatScreen> {
   @override
   void initState() {
     super.initState();
-    _loadVehicleInfo();
+    _loadClientInfo();
     _initializeSocket();
   }
 
-  Future<void> _loadVehicleInfo() async {
+  Future<void> _loadClientInfo() async {
     final prefs = await SharedPreferences.getInstance();
 
     // Debug: Print all stored data
     print('📱 All SharedPreferences data:');
-    print(
-        '📱 current_vehicle_number: ${prefs.getString('current_vehicle_number')}');
+    print('📱 client_email: ${prefs.getString('client_email')}');
     print('📱 company_name: ${prefs.getString('company_name')}');
-    print('📱 vehicle_token: ${prefs.getString('vehicle_token')}');
-    print('📱 vehicle_id: ${prefs.getInt('vehicle_id')}');
+    print('📱 client_token: ${prefs.getString('client_token')}');
+    print('📱 client_id: ${prefs.getInt('client_id')}');
     print('📱 company_id: ${prefs.getInt('company_id')}');
 
     setState(() {
-      _vehicleNumber =
-          prefs.getString('current_vehicle_number') ?? 'Unknown Vehicle';
+      _clientEmail = prefs.getString('client_email') ?? 'client@example.com';
       _companyName = prefs.getString('company_name') ?? 'Company';
-      _vehicleId = prefs.getInt('vehicle_id')?.toString();
+      _clientId = prefs.getInt('client_id')?.toString();
       _companyId = prefs.getInt('company_id')?.toString();
-      _authToken = prefs.getString('vehicle_token');
+      _authToken = prefs.getString('client_auth_token');
     });
 
-    print('📱 Loaded vehicle info: $_vehicleNumber, Company: $_companyName');
-    print('📱 Vehicle ID: $_vehicleId, Company ID: $_companyId');
+    print('📱 Loaded client info: $_clientEmail, Company: $_companyName');
+    print('📱 Client ID: $_clientId, Company ID: $_companyId');
   }
 
   void _initializeSocket() async {
@@ -104,10 +101,10 @@ class _VehicleCompanyChatScreenState extends State<VehicleCompanyChatScreen> {
       senderName: messageData['senderType'] == 'COMPANY' ? 'Company' : 'You',
       senderType: messageData['senderType'] == 'COMPANY'
           ? MessageSenderType.company
-          : MessageSenderType.driver,
+          : MessageSenderType.client,
       timestamp: DateTime.parse(messageData['createdAt']),
-      senderId: messageData['senderType'] == 'COMPANY' ? 'company' : 'driver',
-      isSentByMe: messageData['senderType'] == 'DRIVER',
+      senderId: messageData['senderType'] == 'COMPANY' ? 'company' : 'client',
+      isSentByMe: messageData['senderType'] == 'CLIENT',
     );
 
     setState(() {
@@ -131,8 +128,8 @@ class _VehicleCompanyChatScreenState extends State<VehicleCompanyChatScreen> {
   }
 
   Future<void> _loadChatHistoryFromAPI() async {
-    if (_vehicleId == null || _authToken == null) {
-      print('❌ Missing vehicle ID or auth token');
+    if (_clientId == null || _authToken == null) {
+      print('❌ Missing client ID or auth token');
       return;
     }
 
@@ -144,7 +141,7 @@ class _VehicleCompanyChatScreenState extends State<VehicleCompanyChatScreen> {
       print('🌐 Loading chat history from API...');
 
       final url =
-          'http://localhost:5000/api/company/vehicles/$_vehicleId/chat-history';
+          'http://localhost:5000/api/company/clients/$_clientId/chat-history';
       print('📡 API URL: $url');
 
       final response = await http.get(
@@ -177,13 +174,13 @@ class _VehicleCompanyChatScreenState extends State<VehicleCompanyChatScreen> {
                     : 'You',
                 senderType: messageData['senderType'] == 'COMPANY'
                     ? MessageSenderType.company
-                    : MessageSenderType.driver,
+                    : MessageSenderType.client,
                 timestamp: DateTime.parse(messageData['createdAt'] ??
                     DateTime.now().toIso8601String()),
                 senderId: messageData['senderType'] == 'COMPANY'
                     ? 'company'
-                    : 'driver',
-                isSentByMe: messageData['senderType'] == 'DRIVER',
+                    : 'client',
+                isSentByMe: messageData['senderType'] == 'CLIENT',
               );
 
               loadedMessages.add(message);
@@ -379,7 +376,7 @@ class _VehicleCompanyChatScreenState extends State<VehicleCompanyChatScreen> {
       ),
       body: Column(
         children: [
-          // Vehicle info banner
+          // Client info banner
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12),
@@ -387,13 +384,13 @@ class _VehicleCompanyChatScreenState extends State<VehicleCompanyChatScreen> {
             child: Row(
               children: [
                 Icon(
-                  Icons.directions_car,
+                  Icons.person,
                   color: Colors.blue,
                   size: 20,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Vehicle: $_vehicleNumber',
+                  'Client: $_clientEmail',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: isDarkMode ? Colors.white : Colors.blue[800],
@@ -501,7 +498,7 @@ class _VehicleCompanyChatScreenState extends State<VehicleCompanyChatScreen> {
   }
 
   Widget _buildMessageBubble(ChatMessage message, bool isDarkMode) {
-    final isMe = message.senderType == MessageSenderType.driver;
+    final isMe = message.senderType == MessageSenderType.client;
     final isSystem = message.senderType == MessageSenderType.system;
 
     if (isSystem) {

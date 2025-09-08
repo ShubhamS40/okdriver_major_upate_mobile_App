@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:okdriver/service/api_config.dart';
 import 'package:okdriver/service/client_session_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ClientLoginScreen extends StatefulWidget {
   const ClientLoginScreen({Key? key}) : super(key: key);
@@ -151,6 +152,22 @@ class _ClientLoginScreenState extends State<ClientLoginScreen>
 
               print('🔑 Token found: ${token.substring(0, 10)}...');
               print('👤 User data: $userData');
+
+              // Store additional company information
+              final prefs = await SharedPreferences.getInstance();
+              if (userData['id'] != null) {
+                await prefs.setInt('client_id', userData['id']);
+              }
+              if (userData['companyId'] != null) {
+                await prefs.setInt('company_id', userData['companyId']);
+              }
+              if (userData['email'] != null) {
+                await prefs.setString('client_email', userData['email']);
+              }
+
+              // Store company name (you might need to fetch this from backend)
+              await prefs.setString('company_name', 'Company');
+              await prefs.setString('company_email', 'company@fleet.com');
 
               // Store authentication data
               final loginSuccess = await ClientSessionService.instance.login(

@@ -167,11 +167,11 @@ class SocketService {
     try {
       print('🌐 Loading chat history via HTTP...');
 
-      // Try to load real chat history from backend
+      // Try to load real chat history from backend (last 24 hours)
       if (_vehicleId != null) {
         final response = await http.get(
           Uri.parse(
-              'http://localhost:5000/api/company/vehicles/$_vehicleId/chat/history'),
+              'http://localhost:5000/api/company/vehicles/$_vehicleId/chat-history'),
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer $_vehicleToken',
@@ -182,12 +182,16 @@ class SocketService {
           final data = jsonDecode(response.body);
           print('📨 HTTP chat history response: $data');
 
-          if (data['ok'] == true && data['chats'] != null) {
-            for (var chat in data['chats']) {
+          if (data['success'] == true && data['data'] != null) {
+            // Backend now returns messages in descending order (newest first)
+            // Reverse to show oldest first in chat UI
+            final messages =
+                List<Map<String, dynamic>>.from(data['data']).reversed.toList();
+            for (var chat in messages) {
               _messageController.add(Map<String, dynamic>.from(chat));
             }
             print(
-                '✅ Real chat history loaded via HTTP: ${data['chats'].length} messages');
+                '✅ Real chat history loaded via HTTP: ${data['data'].length} messages');
             return;
           }
         }

@@ -41,7 +41,8 @@ class WebSocketLocationService {
         return true;
       }
 
-      final wsUrl = ApiConfig.baseUrl.replaceFirst('http', 'ws') + '/ws';
+      final wsUrl =
+          ApiConfig.baseUrl.replaceFirst('http', 'ws') + '/location-ws';
       print('🔌 Connecting to WebSocket: $wsUrl');
 
       _channel = WebSocketChannel.connect(Uri.parse(wsUrl));

@@ -24,7 +24,7 @@ class ChatApiService {
     print('🔌 Company ID: $_companyId');
   }
 
-  // Get chat history via POST API
+  // Get chat history via GET API (last 24 hours)
   Future<List<Map<String, dynamic>>> getChatHistory({
     int limit = 50,
     int offset = 0,
@@ -37,17 +37,13 @@ class ChatApiService {
         return [];
       }
 
-      final response = await http.post(
-        Uri.parse('http://localhost:5000/api/company/vehicles/chat/history'),
+      final response = await http.get(
+        Uri.parse(
+            'http://localhost:5000/api/company/vehicles/${_vehicleId}/chat-history?limit=$limit&offset=$offset'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_vehicleToken',
         },
-        body: jsonEncode({
-          'vehicleId': _vehicleId,
-          'limit': limit,
-          'offset': offset,
-        }),
       );
 
       print('📨 API Response Status: ${response.statusCode}');
@@ -55,9 +51,15 @@ class ChatApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['ok'] == true && data['chats'] != null) {
-          print('✅ Chat history loaded: ${data['chats'].length} messages');
-          return List<Map<String, dynamic>>.from(data['chats']);
+        if (data['success'] == true && data['data'] != null) {
+          print('✅ Chat history loaded: ${data['data'].length} messages');
+          // Backend now returns messages in descending order (newest first)
+          final messages = List<Map<String, dynamic>>.from(data['data']);
+          if (limit == 1 && messages.isNotEmpty) {
+            // Return only the first (most recent) message
+            return [messages.first];
+          }
+          return messages;
         } else {
           print('❌ API returned error: ${data['message'] ?? 'Unknown error'}');
           return [];
@@ -72,7 +74,7 @@ class ChatApiService {
     }
   }
 
-  // Send message via POST API
+  // Send message via POST API (company to vehicle)
   Future<bool> sendMessage(String message, {String? attachmentUrl}) async {
     try {
       print('📤 Sending message via POST API...');
@@ -83,13 +85,13 @@ class ChatApiService {
       }
 
       final response = await http.post(
-        Uri.parse('http://localhost:5000/api/company/vehicles/chat/send'),
+        Uri.parse(
+            'http://localhost:5000/api/company/vehicles/${_vehicleId}/send-message'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_vehicleToken',
         },
         body: jsonEncode({
-          'vehicleId': _vehicleId,
           'message': message,
           'attachmentUrl': attachmentUrl,
         }),
@@ -100,7 +102,7 @@ class ChatApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['ok'] == true;
+        return data['success'] == true;
       } else {
         print('❌ Send message failed: ${response.statusCode}');
         return false;
@@ -111,7 +113,7 @@ class ChatApiService {
     }
   }
 
-  // Mark messages as read via POST API
+  // Mark messages as read via PUT API
   Future<bool> markMessagesAsRead(List<int> messageIds) async {
     try {
       print('👀 Marking messages as read via POST API...');
@@ -121,16 +123,14 @@ class ChatApiService {
         return false;
       }
 
-      final response = await http.post(
-        Uri.parse('http://localhost:5000/api/company/vehicles/chat/mark-read'),
+      final response = await http.put(
+        Uri.parse(
+            'http://localhost:5000/api/company/vehicles/${_vehicleId}/mark-read'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_vehicleToken',
         },
-        body: jsonEncode({
-          'vehicleId': _vehicleId,
-          'messageIds': messageIds,
-        }),
+        body: jsonEncode({'messageIds': messageIds}),
       );
 
       print('📨 Mark read response: ${response.statusCode}');
@@ -141,7 +141,7 @@ class ChatApiService {
     }
   }
 
-  // Get unread count via POST API
+  // Get unread count via GET API
   Future<int> getUnreadCount() async {
     try {
       print('📊 Getting unread count via POST API...');
@@ -151,24 +151,21 @@ class ChatApiService {
         return 0;
       }
 
-      final response = await http.post(
+      final response = await http.get(
         Uri.parse(
-            'http://localhost:5000/api/company/vehicles/chat/unread-count'),
+            'http://localhost:5000/api/company/vehicles/${_vehicleId}/unread-count'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $_vehicleToken',
         },
-        body: jsonEncode({
-          'vehicleId': _vehicleId,
-        }),
       );
 
       print('📨 Unread count response: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['ok'] == true) {
-          return data['count'] ?? 0;
+        if (data['success'] == true) {
+          return data['data']?['unreadCount'] ?? 0;
         }
       }
       return 0;

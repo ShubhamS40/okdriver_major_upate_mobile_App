@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/individual_chat_screen.dart';
-import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/vehicle_company_chat_screen.dart';
-import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/model/chat_type.dart';
-import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/select_user_scren.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/components/chat/individual_chat_screen.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/components/chat/company_chat_screen.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/components/chat/model/chat_type.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/components/chat/select_user_screen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:okdriver/service/chat_api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:okdriver/service/client_chat_api_service.dart';
 
 class RecentChatScreen extends StatefulWidget {
   const RecentChatScreen({Key? key}) : super(key: key);
@@ -20,7 +20,7 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   List<ChatConversation> _filteredConversations = [];
-  String? _vehicleNumber;
+  String? _clientEmail;
   String? _companyName;
   int _unreadCount = 0;
   String _lastMessageText = 'Start chatting with your company';
@@ -39,14 +39,13 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
   }
 
   Future<void> _init() async {
-    await _loadVehicleInfo();
+    await _loadClientInfo();
     await _loadMetaFromBackend();
     _loadConversations();
   }
 
   void _getUnreadCount() {
     // This would typically call a service to get unread count
-    // For now, we'll simulate it with a test count
     print('📊 Getting unread count...');
 
     // Simulate unread count for testing
@@ -55,17 +54,16 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
     });
   }
 
-  Future<void> _loadVehicleInfo() async {
+  Future<void> _loadClientInfo() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _vehicleNumber =
-          prefs.getString('current_vehicle_number') ?? 'Unknown Vehicle';
+      _clientEmail = prefs.getString('client_email') ?? 'client@example.com';
       _companyName = prefs.getString('company_name') ?? 'Company';
     });
   }
 
   Future<void> _loadMetaFromBackend() async {
-    final api = ChatApiService();
+    final api = ClientChatApiService();
     await api.initialize();
     try {
       // unread count
@@ -76,8 +74,8 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
         setState(() {
           _unreadCount = unread;
           if (chats.isNotEmpty) {
-            _lastMessageText = (chats.last['message'] ?? '').toString();
-            final createdAt = chats.last['createdAt'] as String?;
+            _lastMessageText = (chats.first['message'] ?? '').toString();
+            final createdAt = chats.first['createdAt'] as String?;
             _lastMessageTime = createdAt != null
                 ? DateTime.tryParse(createdAt) ?? DateTime.now()
                 : DateTime.now();
@@ -95,9 +93,9 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
   }
 
   void _loadConversations() {
-    // Create vehicle-company chat conversation
-    final vehicleCompanyChat = ChatConversation(
-      id: 'vehicle_company_chat',
+    // Create client-company chat conversation
+    final clientCompanyChat = ChatConversation(
+      id: 'client_company_chat',
       user: ChatUser(
         id: 'company',
         name: _companyName ?? 'Company',
@@ -111,8 +109,8 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
       unreadCount: _unreadCount,
     );
 
-    // Only vehicle-company chat should be visible in recent chats
-    _conversations = [vehicleCompanyChat];
+    // Only client-company chat should be visible in recent chats
+    _conversations = [clientCompanyChat];
     _filteredConversations = List.from(_conversations);
   }
 
@@ -135,12 +133,12 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
   }
 
   void _navigateToChat(ChatConversation conversation) {
-    if (conversation.id == 'vehicle_company_chat') {
-      // Navigate to vehicle-company chat screen
+    if (conversation.id == 'client_company_chat') {
+      // Navigate to client-company chat screen
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => const VehicleCompanyChatScreen(),
+          builder: (context) => const CompanyChatScreen(),
         ),
       ).then((_) {
         // Reset unread count when returning from chat
@@ -162,7 +160,6 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
   void _updateUnreadCount(int count) {
     setState(() {
       if (_conversations.isNotEmpty) {
-        _conversations[0].unreadCount = count;
         _unreadCount = count;
         _filteredConversations = List.from(_conversations);
       }

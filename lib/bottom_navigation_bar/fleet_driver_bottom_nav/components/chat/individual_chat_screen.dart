@@ -566,20 +566,12 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
             ),
           ),
           IconButton(
-            icon: Icon(
-              _messageController.text.trim().isEmpty ? Icons.mic : Icons.send,
+            icon: const Icon(
+              Icons.send,
               color: Colors.green,
             ),
             onPressed: () {
-              if (_messageController.text.trim().isEmpty) {
-                // Implement voice message functionality
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Voice message feature coming soon')),
-                );
-              } else {
-                _sendMessage();
-              }
+              _sendMessage();
             },
           ),
         ],

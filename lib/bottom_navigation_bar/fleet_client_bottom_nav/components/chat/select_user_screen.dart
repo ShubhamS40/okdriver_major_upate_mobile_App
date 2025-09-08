@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/individual_chat_screen.dart';
-import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/components/chat/model/chat_type.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/components/chat/model/chat_type.dart';
+import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/components/chat/individual_chat_screen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,11 +13,11 @@ class SelectUserScreen extends StatefulWidget {
 }
 
 class _SelectUserScreenState extends State<SelectUserScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late TabController _tabController;
-  late List<ChatUser> _allUsers;
-  late List<ChatUser> _filteredUsers;
   final TextEditingController _searchController = TextEditingController();
+  List<ChatUser> _allUsers = [];
+  List<ChatUser> _filteredUsers = [];
   bool _isSearching = false;
   String? _companyName;
   String? _companyEmail;
@@ -31,6 +31,14 @@ class _SelectUserScreenState extends State<SelectUserScreen>
     _searchController.addListener(_filterUsers);
   }
 
+  Future<void> _loadCompanyFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _companyName = prefs.getString('company_name') ?? 'Company';
+      _companyEmail = prefs.getString('company_email') ?? 'company@fleet.com';
+    });
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
@@ -40,27 +48,14 @@ class _SelectUserScreenState extends State<SelectUserScreen>
   }
 
   void _loadUsers() {
-    // Build single company user using stored prefs (fallback to defaults)
-    final companyUser = ChatUser(
-      id: 'company',
-      name: _companyName ?? 'Company',
-      email: _companyEmail ?? 'fleet@okdriver.com',
-      userType: ChatUserType.company,
-      isOnline: true,
-      phoneNumber: '+91 9876543210',
-    );
-    _allUsers = [companyUser];
-    _filteredUsers = List.from(_allUsers);
-  }
-
-  Future<void> _loadCompanyFromPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _companyName = prefs.getString('company_name') ?? 'Company';
-      _companyEmail = prefs.getString('company_email') ?? 'fleet@okdriver.com';
-    });
-    _loadUsers();
-    _filterUsers();
+    // Load sample users for now
+    // In a real app, this would fetch from an API or local database
+    // Limit selection to company only for client -> company chat
+    final companyUsers = ChatDataSample.getSampleUsers()
+        .where((u) => u.userType == ChatUserType.company)
+        .toList();
+    _allUsers = companyUsers;
+    _filteredUsers = List.from(companyUsers);
   }
 
   void _filterUsers() {
@@ -75,26 +70,18 @@ class _SelectUserScreenState extends State<SelectUserScreen>
     setState(() {
       _filteredUsers = _allUsers.where((user) {
         return user.name.toLowerCase().contains(query) ||
-            user.email.toLowerCase().contains(query) ||
-            (user.phoneNumber != null &&
-                user.phoneNumber!.toLowerCase().contains(query));
+            user.email.toLowerCase().contains(query);
       }).toList();
     });
   }
 
-  List<ChatUser> _getUsersByType(ChatUserType type) {
-    return _filteredUsers.where((user) => user.userType == type).toList();
-  }
-
-  void _startNewChat(ChatUser user) {
-    // Create a new conversation or find existing one
-    final now = DateTime.now();
+  void _navigateToChat(ChatUser user) {
     final conversation = ChatConversation(
-      id: 'new_conv_${user.id}_${now.millisecondsSinceEpoch}',
+      id: 'chat_${user.id}',
       user: user,
       messages: [],
-      lastMessageTime: now,
-      lastMessageText: 'Start a new conversation',
+      lastMessageTime: DateTime.now(),
+      lastMessageText: 'Start chatting with ${user.name}',
     );
 
     Navigator.push(
@@ -114,22 +101,7 @@ class _SelectUserScreenState extends State<SelectUserScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: _isSearching
-            ? TextField(
-                controller: _searchController,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Search...',
-                  border: InputBorder.none,
-                  hintStyle: TextStyle(
-                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                ),
-                style: TextStyle(
-                  color: isDarkMode ? Colors.white : Colors.black,
-                ),
-              )
-            : const Text('Select Contact'),
+        title: const Text('Select User'),
         actions: [
           IconButton(
             icon: Icon(_isSearching ? Icons.close : Icons.search),
@@ -146,14 +118,35 @@ class _SelectUserScreenState extends State<SelectUserScreen>
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'COMPANY'),
+            Tab(text: 'Company'),
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
         children: [
-          _buildUserList(_getUsersByType(ChatUserType.company), isDarkMode),
+          if (_isSearching)
+            Container(
+              padding: const EdgeInsets.all(16.0),
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Search users...',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12.0),
+                  ),
+                ),
+              ),
+            ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildUserList(_filteredUsers, isDarkMode),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -163,7 +156,7 @@ class _SelectUserScreenState extends State<SelectUserScreen>
     if (users.isEmpty) {
       return Center(
         child: Text(
-          _isSearching ? 'No contacts found' : 'No contacts available',
+          _isSearching ? 'No users found' : 'No users available',
           style: TextStyle(
             color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
           ),
@@ -182,7 +175,7 @@ class _SelectUserScreenState extends State<SelectUserScreen>
 
   Widget _buildUserTile(ChatUser user, bool isDarkMode) {
     return ListTile(
-      onTap: () => _startNewChat(user),
+      onTap: () => _navigateToChat(user),
       leading: Stack(
         children: [
           CircleAvatar(
@@ -218,17 +211,14 @@ class _SelectUserScreenState extends State<SelectUserScreen>
             ),
         ],
       ),
-      title: Text(user.name),
+      title: Text(
+        user.name,
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            user.email,
-            style: TextStyle(
-              fontSize: 12,
-              color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-            ),
-          ),
+          Text(user.email),
           if (user.phoneNumber != null)
             Text(
               user.phoneNumber!,
@@ -239,9 +229,27 @@ class _SelectUserScreenState extends State<SelectUserScreen>
             ),
         ],
       ),
-      trailing: Icon(
-        Icons.chat,
-        color: Colors.green,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: _getUserTypeColor(user.userType),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _getUserTypeLabel(user.userType),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          const Icon(Icons.arrow_forward_ios, size: 16),
+        ],
       ),
     );
   }
@@ -258,6 +266,36 @@ class _SelectUserScreenState extends State<SelectUserScreen>
         return Colors.purple;
       default:
         return Colors.grey;
+    }
+  }
+
+  Color _getUserTypeColor(ChatUserType userType) {
+    switch (userType) {
+      case ChatUserType.company:
+        return Colors.blue;
+      case ChatUserType.client:
+        return Colors.orange;
+      case ChatUserType.driver:
+        return Colors.green;
+      case ChatUserType.support:
+        return Colors.purple;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  String _getUserTypeLabel(ChatUserType userType) {
+    switch (userType) {
+      case ChatUserType.company:
+        return 'COMPANY';
+      case ChatUserType.client:
+        return 'CLIENT';
+      case ChatUserType.driver:
+        return 'DRIVER';
+      case ChatUserType.support:
+        return 'SUPPORT';
+      default:
+        return 'USER';
     }
   }
 }
