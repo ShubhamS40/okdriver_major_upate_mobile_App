@@ -115,6 +115,45 @@ class ClientChatApiService {
     }
   }
 
+  // -------- Client ↔ Vehicle chat (client token) --------
+  Future<List<Map<String, dynamic>>> getVehicleChatHistory(
+      int vehicleId) async {
+    if (_authToken == null) return [];
+    try {
+      final res = await http.get(
+        Uri.parse(
+            'http://localhost:5000/api/company/clients/vehicles/$vehicleId/chat-history'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_authToken',
+        },
+      );
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+        final list = List<Map<String, dynamic>>.from(data['data'] ?? []);
+        return list;
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  Future<bool> sendMessageToVehicle(int vehicleId, String message) async {
+    if (_authToken == null) return false;
+    try {
+      final res = await http.post(
+        Uri.parse(
+            'http://localhost:5000/api/company/clients/vehicles/$vehicleId/send-message'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $_authToken',
+        },
+        body: jsonEncode({'message': message}),
+      );
+      if (res.statusCode == 200) return true;
+    } catch (_) {}
+    return false;
+  }
+
   // Mark messages as read
   Future<bool> markMessagesAsRead(List<int> messageIds) async {
     if (_clientId == null || _authToken == null) {

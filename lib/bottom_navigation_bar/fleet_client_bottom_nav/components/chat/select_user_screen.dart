@@ -21,11 +21,12 @@ class _SelectUserScreenState extends State<SelectUserScreen>
   bool _isSearching = false;
   String? _companyName;
   String? _companyEmail;
+  List<ChatUser> _assignedVehicles = [];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 1, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _loadUsers();
     _loadCompanyFromPrefs();
     _searchController.addListener(_filterUsers);
@@ -47,15 +48,26 @@ class _SelectUserScreenState extends State<SelectUserScreen>
     super.dispose();
   }
 
-  void _loadUsers() {
-    // Load sample users for now
-    // In a real app, this would fetch from an API or local database
-    // Limit selection to company only for client -> company chat
+  void _loadUsers() async {
+    // Company option
     final companyUsers = ChatDataSample.getSampleUsers()
         .where((u) => u.userType == ChatUserType.company)
         .toList();
-    _allUsers = companyUsers;
-    _filteredUsers = List.from(companyUsers);
+
+    // Vehicles assigned to this client (placeholder, replace with API later)
+    // We'll show a single sample row to keep UI working without backend call here
+    _assignedVehicles = [
+      ChatUser(
+        id: 'vehicle_assigned',
+        name: 'Assigned Vehicle',
+        email: 'vehicle@okdriver',
+        userType: ChatUserType.driver,
+        isOnline: true,
+      )
+    ];
+
+    _allUsers = [...companyUsers, ..._assignedVehicles];
+    _filteredUsers = List.from(_allUsers);
   }
 
   void _filterUsers() {
@@ -119,6 +131,7 @@ class _SelectUserScreenState extends State<SelectUserScreen>
           controller: _tabController,
           tabs: const [
             Tab(text: 'Company'),
+            Tab(text: 'Vehicles'),
           ],
         ),
       ),
@@ -143,7 +156,18 @@ class _SelectUserScreenState extends State<SelectUserScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildUserList(_filteredUsers, isDarkMode),
+                _buildUserList(
+                  _filteredUsers
+                      .where((u) => u.userType == ChatUserType.company)
+                      .toList(),
+                  isDarkMode,
+                ),
+                _buildUserList(
+                  _filteredUsers
+                      .where((u) => u.userType != ChatUserType.company)
+                      .toList(),
+                  isDarkMode,
+                ),
               ],
             ),
           ),

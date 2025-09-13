@@ -25,7 +25,7 @@ class _SelectUserScreenState extends State<SelectUserScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 1, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _loadUsers();
     _loadCompanyFromPrefs();
     _searchController.addListener(_filterUsers);
@@ -40,7 +40,7 @@ class _SelectUserScreenState extends State<SelectUserScreen>
   }
 
   void _loadUsers() {
-    // Build single company user using stored prefs (fallback to defaults)
+    // Company
     final companyUser = ChatUser(
       id: 'company',
       name: _companyName ?? 'Company',
@@ -49,7 +49,17 @@ class _SelectUserScreenState extends State<SelectUserScreen>
       isOnline: true,
       phoneNumber: '+91 9876543210',
     );
-    _allUsers = [companyUser];
+    // Assigned clients placeholder (replace with API later)
+    final assignedClients = [
+      ChatUser(
+        id: 'client_assigned',
+        name: 'Assigned Client',
+        email: 'client@okdriver',
+        userType: ChatUserType.client,
+        isOnline: true,
+      )
+    ];
+    _allUsers = [companyUser, ...assignedClients];
     _filteredUsers = List.from(_allUsers);
   }
 
@@ -147,6 +157,7 @@ class _SelectUserScreenState extends State<SelectUserScreen>
           controller: _tabController,
           tabs: const [
             Tab(text: 'COMPANY'),
+            Tab(text: 'CLIENTS'),
           ],
         ),
       ),
@@ -154,6 +165,7 @@ class _SelectUserScreenState extends State<SelectUserScreen>
         controller: _tabController,
         children: [
           _buildUserList(_getUsersByType(ChatUserType.company), isDarkMode),
+          _buildUserList(_getUsersByType(ChatUserType.client), isDarkMode),
         ],
       ),
     );

@@ -59,13 +59,11 @@ class ClientSocketService {
       _socket = IO.io(
         'http://localhost:5000',
         IO.OptionBuilder()
-            .setTransports(['websocket', 'polling']) // Try both transports
-            .setAuth({'token': _authToken}) // Send token in auth object
-            .setExtraHeaders({
-              'Authorization': 'Bearer $_authToken'
-            }) // Also send in headers as backup
+            .setTransports(['websocket', 'polling'])
+            .setAuth({'token': _authToken, 'role': 'CLIENT'})
+            .setExtraHeaders({'Authorization': 'Bearer $_authToken'})
             .enableAutoConnect()
-            .setTimeout(10000) // 10 second timeout
+            .setTimeout(10000)
             .setReconnectionAttempts(5)
             .setReconnectionDelay(1000)
             .build(),
@@ -138,6 +136,7 @@ class ClientSocketService {
 
     print('📤 Sending message to company via socket: $message');
 
+    // Align with backend HTTP path; for realtime we rely on HTTP emit, socket send optional
     _socket!.emit('client_message', {
       'clientId': _clientId,
       'companyId': _companyId,

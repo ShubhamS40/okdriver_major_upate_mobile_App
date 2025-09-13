@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:okdriver/service/client_socket_service.dart';
+import 'package:okdriver/service/client_chat_api_service.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/components/chat/model/chat_type.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
@@ -19,6 +20,7 @@ class _CompanyChatScreenState extends State<CompanyChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ClientSocketService _socketService = ClientSocketService();
+  final ClientChatApiService _apiService = ClientChatApiService();
 
   List<ChatMessage> _messages = [];
   bool _isConnected = false;
@@ -65,6 +67,9 @@ class _CompanyChatScreenState extends State<CompanyChatScreen> {
   void _initializeSocket() async {
     print('🔌 Initializing socket...');
     await _socketService.initializeSocket();
+
+    // Initialize API service for HTTP actions
+    await _apiService.initialize();
 
     // Wait a bit for socket to connect
     await Future.delayed(const Duration(milliseconds: 1000));
@@ -296,12 +301,13 @@ class _CompanyChatScreenState extends State<CompanyChatScreen> {
     _messageController.clear();
 
     print('📤 Sending message: $messageText');
-
-    // Send message via socket
-    _socketService.sendMessageToCompany(messageText);
-
-    // Don't add message locally - let it come through socket to avoid echoing
-    // The message will be received via socket and added to the list
+    // Prefer HTTP API so backend emits to both company and client rooms
+    _apiService.sendMessage(messageText).then((ok) {
+      if (!ok) {
+        // Fallback to socket if HTTP fails
+        _socketService.sendMessageToCompany(messageText);
+      }
+    });
   }
 
   @override
