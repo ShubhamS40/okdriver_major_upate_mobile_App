@@ -1,10 +1,10 @@
-// controller/payment/companyPurchasePayment.js (PayU integration)
+// controller/payment/vehicleLimitPurchasePayment.js (PayU integration)
 const crypto = require('crypto');
 const dotenv = require('dotenv');
 dotenv.config();
 
 function generateTxnId() {
-    return 'tx_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+    return 'vl_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
 }
 
 function sha512(str) {
@@ -22,7 +22,7 @@ function buildPayUParams({ amount, productinfo, firstname, email, phone, surl, f
         key,
         txnid,
         amount: amtStr,
-        productinfo: productinfo || 'Company Plan',
+        productinfo: productinfo || 'Vehicle Limit Plan',
         firstname: firstname || 'Company',
         email: email || 'company@example.com',
         phone: phone || '9999999999',
@@ -39,7 +39,7 @@ function buildPayUParams({ amount, productinfo, firstname, email, phone, surl, f
     return fields;
 }
 
-const createPaymentOrder = async (req, res) => {
+const createVehicleLimitPaymentOrder = async (req, res) => {
     try {
         const { amount, currency = 'INR', receipt, planId } = req.body || {};
 
@@ -51,17 +51,21 @@ const createPaymentOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Amount is required' });
         }
 
+        if (!planId) {
+            return res.status(400).json({ success: false, message: 'Plan ID is required' });
+        }
+
         // Success/Failure return URLs handled by backend which will then redirect to website
         const websiteBase = process.env.WEBSITE_BASE_URL || 'http://localhost:3000';
-        const backendBase = process.env.BACKEND_BASE_URL || 'http://localhost:5000';
-        const surl = `${backendBase}/api/admin/companyplan/payment/payu-return`;
-        const furl = `${backendBase}/api/admin/companyplan/payment/payu-return`;
+      const backendBase = process.env.BACKEND_BASE_URL || 'http://localhost:5000';
+      const surl = `${websiteBase}/api/payment/vehicle-limit/payu-return`;
+      const furl = `${websiteBase}/api/payment/vehicle-limit/payu-return`;
 
         const authCompany = req.company || {};
 
         const params = buildPayUParams({
             amount,
-            productinfo: receipt || 'OKDriver Subscription',
+            productinfo: receipt || 'OKDriver Vehicle Limit Upgrade',
             firstname: authCompany.name || 'Company',
             email: authCompany.email || 'company@example.com',
             phone: authCompany.phone || '9999999999',
@@ -74,9 +78,9 @@ const createPaymentOrder = async (req, res) => {
         const action = (process.env.PAYU_BASE_URL || 'https://test.payu.in') + '/_payment';
         return res.status(200).json({ success: true, gateway: 'PAYU', action, params });
     } catch (error) {
-        console.error('❌ PayU createPaymentOrder error:', error);
+        console.error('❌ PayU createVehicleLimitPaymentOrder error:', error);
         res.status(500).json({ success: false, message: 'Payment init failed' });
     }
 };
 
-module.exports = { createPaymentOrder };
+module.exports = { createVehicleLimitPaymentOrder };

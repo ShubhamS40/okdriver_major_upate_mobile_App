@@ -62,8 +62,7 @@ function initializeSocketServer(server) {
       console.log(`User disconnected: ${socket.id}`);
     });
     
-    // Import and initialize chat controllers
-    require('./controller/company/vechile/chatVehicleSocketController')(io, socket, prisma);
+    // Chat functionality is handled in index.js
   });
 
   return io;

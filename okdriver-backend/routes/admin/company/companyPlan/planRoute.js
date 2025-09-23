@@ -36,4 +36,7 @@ router.post('/payment/order', verifyCompanyAuth, createPaymentOrder);
 // COMPANY: Verify payment
 router.post('/payment/verify', verifyCompanyAuth, verifyPayment);
 
+// PAYU return (surl/furl) posts here without auth
+router.post('/payment/payu-return', verifyPayment);
+
 module.exports = router;

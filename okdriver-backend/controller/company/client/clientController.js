@@ -147,10 +147,21 @@ const verifyClientOtp = async (req, res) => {
     // Optional: clean up OTPs for this email
     await prisma.oTP.deleteMany({ where: { phone: email } });
 
-    // Issue a lightweight token if needed
-    const token = jwt.sign({ clientId: client.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    // Issue a token with client and company information
+    const token = jwt.sign({ 
+      clientId: client.id, 
+      companyId: client.companyId 
+    }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
-    return res.status(200).json({ message: 'Verified', token, client: { id: client.id, email: client.email } });
+    return res.status(200).json({ 
+      message: 'Verified', 
+      token, 
+      client: { 
+        id: client.id, 
+        email: client.email, 
+        companyId: client.companyId 
+      } 
+    });
   } catch (error) {
     console.error('verifyClientOtp error:', error);
     return res.status(500).json({ message: 'Internal Server Error' });

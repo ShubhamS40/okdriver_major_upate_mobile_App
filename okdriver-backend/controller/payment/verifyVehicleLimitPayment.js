@@ -4,8 +4,8 @@ const prisma = new PrismaClient();
 const dotenv = require('dotenv');
 dotenv.config();
 
-// PayU return handler (surl/furl)
-const verifyPayment = async (req, res) => {
+// PayU return handler for vehicle limit top-up plans
+const verifyVehicleLimitPayment = async (req, res) => {
   try {
     // PayU posts as application/x-www-form-urlencoded by default
     const body = req.body || {};
@@ -44,44 +44,80 @@ const verifyPayment = async (req, res) => {
     const companyId = Number(udf2 || req.company?.id || 0);
     const numericPlanId = Number(udf1);
 
-    const plan = await prisma.companyPlan.findUnique({ where: { id: numericPlanId } });
+    // Get the vehicle limit plan
+    const plan = await prisma.companyPlan.findUnique({ 
+      where: { id: numericPlanId },
+      select: {
+        id: true,
+        name: true,
+        vehicleLimit: true,
+        planType: true,
+        price: true
+      }
+    });
+    
     if (!plan) return res.status(404).json({ message: 'Plan not found' });
-
-    // Guardrail: Only SUBSCRIPTION-type plans should create CompanySubscription
-    if (plan.planType !== 'SUBSCRIPTION') {
-      return res.status(400).json({ success: false, message: 'Invalid plan type for subscription purchase' });
+    
+    // Verify this is a vehicle limit plan
+    if (plan.planType !== 'VEHICLE_LIMIT' || !plan.vehicleLimit) {
+      return res.status(400).json({ success: false, message: 'Invalid plan type for vehicle limit top-up' });
     }
 
-    const now = new Date();
-    const endDate = new Date(now.getTime());
-    endDate.setDate(endDate.getDate() + plan.durationDays);
+    // Get company's current subscription expiry date
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: {
+        subscriptionExpiresAt: true,
+        additionalVehicleLimit: true
+      }
+    });
 
-    await prisma.companySubscription.create({
+    if (!company) return res.status(404).json({ message: 'Company not found' });
+    
+    // Use company's subscription expiry date for the top-up expiry
+    const expiresAt = company.subscriptionExpiresAt || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default to 30 days if no subscription
+
+    // Create a vehicle limit top-up record
+    await prisma.vehicleLimitTopUp.create({
       data: {
         companyId,
         planId: numericPlanId,
-        startAt: now,
-        endAt: endDate,
+        vehicleCount: plan.vehicleLimit,
+        purchasedAt: new Date(),
+        expiresAt,
         status: 'ACTIVE',
         paymentRef: mihpayid || txnid
       }
     });
 
+    // Update company's additional vehicle limit
     await prisma.company.update({
       where: { id: companyId },
-      data: { currentPlanId: numericPlanId, subscriptionExpiresAt: endDate }
+      data: { 
+        additionalVehicleLimit: company.additionalVehicleLimit + plan.vehicleLimit 
+      }
     });
 
     const website = process.env.WEBSITE_BASE_URL || 'http://localhost:3000';
-    const successUrl = `${website}/company/subscription-success?txnid=${encodeURIComponent(txnid)}&mihpayid=${encodeURIComponent(mihpayid||'')}`;
+    const successUrl = `${website}/company/vehicle-limit-success?txnid=${encodeURIComponent(txnid)}&mihpayid=${encodeURIComponent(mihpayid||'')}`;
+    
     if (req.headers.accept && req.headers.accept.includes('text/html')) {
       return res.redirect(302, successUrl);
     }
-    return res.json({ success: true, message: 'Payment & plan activated', txnid, mihpayid, redirect: successUrl });
+    
+    return res.json({ 
+      success: true, 
+      message: 'Payment successful & vehicle limit updated', 
+      txnid, 
+      mihpayid, 
+      redirect: successUrl,
+      vehicleLimit: plan.vehicleLimit,
+      newTotalLimit: company.additionalVehicleLimit + plan.vehicleLimit
+    });
   } catch (err) {
-    console.error('PayU Verification Error:', err);
+    console.error('PayU Vehicle Limit Verification Error:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
-module.exports = { verifyPayment };
+module.exports = { verifyVehicleLimitPayment };

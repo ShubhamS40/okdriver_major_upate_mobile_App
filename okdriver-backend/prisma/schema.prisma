@@ -54,6 +54,31 @@ enum BillingCycle {
   CUSTOM
 }
 
+enum PlanType {
+  SUBSCRIPTION     // Regular subscription plan
+  VEHICLE_LIMIT    // Top-up plan for additional vehicles
+  CLIENT_LIMIT     // Top-up plan for additional clients
+}
+
+enum TopUpStatus {
+  ACTIVE
+  EXPIRED
+  USED
+}
+
+// ---------- SUPPORT TICKETS ----------
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+}
+
 // ---------- ADMIN ----------
 model Admin {
   id        Int      @id @default(autoincrement())
@@ -155,11 +180,13 @@ model CompanyPlan {
   name           String
   description    String?
   price          Decimal        @db.Decimal(10,2)
-  durationDays   Int
-  billingCycle   String
+  durationDays   Int?           // Nullable for top-up plans
+  billingCycle   String?        // Nullable for top-up plans
   keyAdvantages  String[]
-  vehicleLimit   Int
-  storageLimitGB Int
+  vehicleLimit   Int?           // For subscription plans
+  clientLimit    Int?           // For subscription plans  
+  storageLimitGB Int?           // Nullable for top-up plans
+  planType       PlanType       @default(SUBSCRIPTION)
   isActive       Boolean        @default(true)
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
@@ -171,6 +198,45 @@ model CompanyPlan {
 
   // **NEW BACKRELATION**
   companiesUsingThisPlan Company[] @relation("CurrentPlanRelation")
+  
+  // Top-up plan relations
+  vehicleTopUps  VehicleLimitTopUp[]
+  clientTopUps   ClientLimitTopUp[]
+}
+
+// ---------- TOP-UP PLANS ----------
+model VehicleLimitTopUp {
+  id            Int         @id @default(autoincrement())
+  companyId     Int
+  planId        Int         // References the vehicle-limit plan
+  vehicleCount  Int         // Number of additional vehicles
+  purchasedAt   DateTime    @default(now())
+  expiresAt     DateTime    // Aligned with company's current subscription
+  status        TopUpStatus @default(ACTIVE)
+  paymentRef    String?
+  
+  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan          CompanyPlan @relation(fields: [planId], references: [id])
+  
+  @@index([companyId, status])
+  @@index([expiresAt])
+}
+
+model ClientLimitTopUp {
+  id           Int         @id @default(autoincrement())
+  companyId    Int
+  planId       Int         // References the client-limit plan
+  clientCount  Int         // Number of additional clients
+  purchasedAt  DateTime    @default(now())
+  expiresAt    DateTime    // Aligned with company's current subscription
+  status       TopUpStatus @default(ACTIVE)
+  paymentRef   String?
+  
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan         CompanyPlan @relation(fields: [planId], references: [id])
+  
+  @@index([companyId, status])
+  @@index([expiresAt])
 }
 
 model CompanyFeature {
@@ -224,6 +290,10 @@ model Company {
   currentPlanId         Int?
   currentPlan           CompanyPlan?  @relation("CurrentPlanRelation", fields: [currentPlanId], references: [id])
   subscriptionExpiresAt DateTime?
+  
+  // Additional limits from top-up plans
+  additionalVehicleLimit Int         @default(0)
+  additionalClientLimit  Int         @default(0)
 
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
@@ -234,6 +304,10 @@ model Company {
   grants                ClientVehicleAccess[]
   sentMessages          ChatMessage[] @relation("CompanySender")
   vehicleChats          VehicleChat[]
+  clientChats           ClientChat[]
+  tickets               HelpSupportTicket[]
+  vehicleTopUps         VehicleLimitTopUp[]
+  clientTopUps          ClientLimitTopUp[]
 
   @@index([currentPlanId])
   ClientList ClientList[]
@@ -293,6 +367,7 @@ model Client {
   company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   accesses   ClientVehicleAccess[]
   sentMessages ChatMessage[] @relation("ClientSender")
+  clientChats ClientChat[]
 
   ClientListMember ClientListMember[]
 }
@@ -375,6 +450,44 @@ model VehicleChat {
   @@index([vehicleId, createdAt])
   @@index([companyId, createdAt])
   @@index([isRead])
+}
+
+// ---------- CLIENT CHAT (real-time chat between company and client) ----------
+model ClientChat {
+  id              Int        @id @default(autoincrement())
+  clientId        Int
+  companyId       Int
+  senderType      SenderType
+  message         String
+  attachmentUrl   String?
+  isRead          Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+
+  client          Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  company         Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([isRead])
+}
+
+// ---------- HELP & SUPPORT TICKETS ----------
+model HelpSupportTicket {
+  id          Int           @id @default(autoincrement())
+  companyId   Int
+  subject     String
+  description String
+  priority    TicketPriority @default(MEDIUM)
+  status      TicketStatus   @default(OPEN)
+  adminResponse String?
+  resolvedAt  DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  company     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status])
+  @@index([createdAt])
 }
 
 // ---------- OTP FOR AUTHENTICATION ----------

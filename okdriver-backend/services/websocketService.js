@@ -10,7 +10,10 @@ class WebSocketService {
 
   // Initialize WebSocket server
   initialize(server) {
-    this.wss = new WebSocket.Server({ server });
+    this.wss = new WebSocket.Server({ 
+      server,
+      path: '/location-ws' // Use different path to avoid conflict with Socket.IO
+    });
     
     this.wss.on('connection', (ws, req) => {
       console.log('🔌 New WebSocket connection established');
@@ -23,9 +26,19 @@ class WebSocketService {
         this.handleDisconnection(ws);
       });
       
+      // Handle WebSocket errors
+      ws.on('error', (error) => {
+        console.error('❌ WebSocket error:', error);
+        this.handleDisconnection(ws);
+      });
+      
       // Handle incoming messages
       ws.on('message', (message) => {
-        this.handleMessage(ws, message);
+        try {
+          this.handleMessage(ws, message);
+        } catch (error) {
+          console.error('❌ Error handling WebSocket message:', error);
+        }
       });
     });
     
