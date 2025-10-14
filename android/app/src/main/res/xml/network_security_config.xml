@@ -2,12 +2,19 @@
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">192.168.0.101</domain>
+        <domain includeSubdomains="true">192.168.0.106</domain>
         <domain includeSubdomains="true">192.168.1.36</domain>
         <domain includeSubdomains="true">192.168.1.39</domain>
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">10.0.2.2</domain>
         <domain includeSubdomains="true">13.60.91.147</domain>
         <domain includeSubdomains="true">98.70.99.58</domain>
+
+        <!-- PayU cleartext domains used in return callbacks -->
+        <domain includeSubdomains="true">payu.in</domain>
+        <domain includeSubdomains="true">payubiz.in</domain>
+        <domain includeSubdomains="true">txncdn.payubiz.in</domain>
+        <domain includeSubdomains="true">test.payu.in</domain>
 
     </domain-config>
 </network-security-config> 

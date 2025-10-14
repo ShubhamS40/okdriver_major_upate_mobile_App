@@ -34,3 +34,28 @@ exports.getCurrentDriver = async (req, res) => {
     res.status(500).json({ error: 'Failed to get driver data' });
   }
 }; 
+
+// Permanently delete current driver's account and cascade related data
+exports.deleteAccount = async (req, res) => {
+  try {
+    const driverId = req.driver.id;
+
+    // End current session first (best-effort)
+    try {
+      await prisma.driverSession.update({
+        where: { id: req.session.id },
+        data: { isActive: false }
+      });
+    } catch (_) {}
+
+    // Delete the driver; relations are set to Cascade in Prisma schema
+    await prisma.driver.delete({
+      where: { id: driverId }
+    });
+
+    return res.status(200).json({ success: true, message: 'Account deleted successfully' });
+  } catch (error) {
+    console.error('Delete account error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete account' });
+  }
+};

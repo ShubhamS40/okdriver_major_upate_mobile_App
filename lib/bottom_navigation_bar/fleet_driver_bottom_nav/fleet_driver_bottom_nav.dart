@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/fleet_client_bottom_nav.dart';
 import 'dart:async';
 import 'package:okdriver/driver_profile_screen/driver_profile_screen.dart';
-import 'package:okdriver/home_screen/homescreen.dart';
 import 'package:okdriver/role_selection/driver_login_screen/driver_login_screen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
@@ -17,6 +16,7 @@ import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/component
 // Import for OpenStreetMap
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:okdriver/language/app_localizations.dart';
 
 class FleetDriverLocationScreen extends StatefulWidget {
   @override
@@ -34,7 +34,7 @@ class _FleetDriverLocationScreenState extends State<FleetDriverLocationScreen> {
   void initState() {
     super.initState();
     _loadVehicleNumber();
-    _startLocationTracking();
+    _checkInitialTrackingStatus();
 
     // Update UI every second to show live status
     _statusTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -61,95 +61,216 @@ class _FleetDriverLocationScreenState extends State<FleetDriverLocationScreen> {
     });
   }
 
-  Future<void> _startLocationTracking() async {
-    if (_vehicleNumber == null || _vehicleNumber == 'Unknown Vehicle') {
-      print('⚠️ No vehicle number available for location tracking');
-      return;
-    }
-
-    final success =
-        await _locationService.startLocationTracking(_vehicleNumber!);
-    if (success) {
-      print('✅ Location tracking started for $_vehicleNumber');
-    } else {
-      print('❌ Failed to start location tracking');
-    }
+  Future<void> _checkInitialTrackingStatus() async {
+    setState(() {
+      _isTracking = _locationService.isTracking;
+    });
   }
 
-  void _stopLocationTracking() {
-    _locationService.stopLocationTracking();
-    print('🛑 Location tracking stopped');
+  Future<void> _toggleLocationSharing() async {
+    if (_isTracking) {
+      // Stop tracking
+      _locationService.stopLocationTracking();
+      print('🛑 Location tracking stopped');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.location_off, color: Colors.white),
+                SizedBox(width: 12),
+                Text(
+                  'Location sharing stopped',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
+    } else {
+      // Start tracking
+      if (_vehicleNumber == null || _vehicleNumber == 'Unknown Vehicle') {
+        print('⚠️ No vehicle number available for location tracking');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Vehicle number not available'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      final success =
+          await _locationService.startLocationTracking(_vehicleNumber!);
+
+      if (success) {
+        print('✅ Location tracking started for $_vehicleNumber');
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: const [
+                  Icon(Icons.location_on, color: Colors.white),
+                  SizedBox(width: 12),
+                  Text(
+                    'Location sharing started',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.green.shade700,
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        }
+      } else {
+        print('❌ Failed to start location tracking');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Failed to start location tracking'),
+              backgroundColor: Colors.red.shade700,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Live Location'),
+        title: const Text('Live Location Sharing Screen'),
         backgroundColor: Colors.blue,
-        actions: [
-          IconButton(
-            icon: Icon(_isTracking ? Icons.location_on : Icons.location_off),
-            onPressed:
-                _isTracking ? _stopLocationTracking : _startLocationTracking,
-            tooltip: _isTracking ? 'Stop Tracking' : 'Start Tracking',
-          ),
-        ],
       ),
       body: Column(
         children: [
-          // Location Status Card
-          Card(
+          // Simple Status Card
+          Container(
+            width: double.infinity,
             margin: const EdgeInsets.all(16),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        _isTracking ? Icons.location_on : Icons.location_off,
-                        color: _isTracking ? Colors.green : Colors.red,
-                        size: 24,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _isTracking
-                            ? 'Location Tracking Active'
-                            : 'Location Tracking Inactive',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: _isTracking ? Colors.green : Colors.red,
-                        ),
-                      ),
-                    ],
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: _isTracking ? Colors.green.shade50 : Colors.red.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color:
+                    _isTracking ? Colors.green.shade200 : Colors.red.shade200,
+                width: 2,
+              ),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  _isTracking ? Icons.check_circle : Icons.cancel,
+                  color:
+                      _isTracking ? Colors.green.shade700 : Colors.red.shade700,
+                  size: 48,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _isTracking
+                      ? 'Location Sharing Active'
+                      : 'Location Sharing Inactive',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: _isTracking
+                        ? Colors.green.shade900
+                        : Colors.red.shade900,
                   ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Vehicle: ${_vehicleNumber ?? 'Loading...'}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+                if (_isTracking) ...[
                   const SizedBox(height: 8),
-                  Text('Vehicle: ${_vehicleNumber ?? 'Loading...'}'),
-                  const SizedBox(height: 8),
-                  Text(
-                      'Status: ${_isTracking ? 'Sending updates every 5 seconds' : 'Not tracking'}'),
-                  if (_locationService.lastKnownPosition != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                        'Last Update: ${_locationService.getFormattedLocation()}'),
-                    if (_locationService.getSpeedKmh() != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                          'Speed: ${_locationService.getSpeedKmh()!.toStringAsFixed(1)} km/h'),
-                    ],
-                    if (_locationService.getHeading() != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                          'Heading: ${_locationService.getHeading()!.toStringAsFixed(0)}°'),
-                    ],
-                  ],
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade100,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'Updating every 5 seconds',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.green.shade900,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ],
+              ],
+            ),
+          ),
+
+          // Large Action Button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: SizedBox(
+              width: double.infinity,
+              height: 60,
+              child: ElevatedButton(
+                onPressed: _toggleLocationSharing,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      _isTracking ? Colors.red.shade600 : Colors.green.shade600,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 4,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _isTracking ? Icons.location_off : Icons.my_location,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      _isTracking
+                          ? 'Stop Sharing Location'
+                          : 'Start Sharing Location',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
+
+          const SizedBox(height: 16),
 
           // Map
           Expanded(
@@ -162,6 +283,7 @@ class _FleetDriverLocationScreenState extends State<FleetDriverLocationScreen> {
                   : const LatLng(28.6139, 77.2090), // Default to Delhi, India
               driverName: 'Fleet Driver',
               vehicleNumber: _vehicleNumber ?? 'Unknown',
+              // isTracking: _isTracking,
             ),
           ),
         ],
@@ -219,10 +341,9 @@ class _FleetDriverBottomNavScreenState
   bool _isLoggedIn = false;
 
   final List<Widget> _screens = [
-    const HomeScreen(),
     FleetDriverLocationScreen(),
     const FleetDriverChatScreen(),
-    const ProfileScreen(),
+    const ProfileScreen(mode: ProfileMode.fleetDriver),
   ];
 
   @override
@@ -256,11 +377,6 @@ class _FleetDriverBottomNavScreenState
       );
     }
 
-    // Show login screen if not authenticated
-    // if (!_isLoggedIn) {
-    //   return const DriverLoginScreen();
-    // }
-
     // Access the theme provider
     final themeProvider = Provider.of<ThemeProvider>(context);
     final isDarkMode = themeProvider.isDarkTheme;
@@ -274,22 +390,18 @@ class _FleetDriverBottomNavScreenState
         selectedItemColor: isDarkMode ? Colors.white : Colors.blue,
         unselectedItemColor: isDarkMode ? Colors.grey : Colors.grey.shade600,
         type: BottomNavigationBarType.fixed,
-        items: const [
+        items: [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
+            icon: const Icon(Icons.location_on),
+            label: AppLocalizations.of(context).translate('location'),
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.location_on),
-            label: 'Location',
+            icon: const Icon(Icons.chat),
+            label: AppLocalizations.of(context).translate('chat'),
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.chat),
-            label: 'Chat',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
+            icon: const Icon(Icons.person),
+            label: AppLocalizations.of(context).translate('profile'),
           ),
         ],
       ),

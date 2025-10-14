@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:okdriver/language/language_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:okdriver/theme/theme_provider.dart';
+import 'package:okdriver/language/app_localizations.dart';
 
 class LanguageSwitchScreen extends StatefulWidget {
   const LanguageSwitchScreen({super.key});
@@ -87,14 +88,16 @@ class _LanguageSwitchScreenState extends State<LanguageSwitchScreen> {
           borderRadius: BorderRadius.circular(16),
         ),
         title: Text(
-          'Language Changed',
+          AppLocalizations.of(context).translate('language_changed'),
           style: TextStyle(
             color: _isDarkMode ? Colors.white : Colors.black87,
             fontWeight: FontWeight.bold,
           ),
         ),
         content: Text(
-          'Language has been changed to $language. App will restart to apply changes.',
+          AppLocalizations.of(context)
+              .translate('language_change_message', [language]).replaceAll(
+                  'पुनरारंभ होगा।', 'तुरंत लागू हो गए हैं।'),
           style: TextStyle(
             color: _isDarkMode ? Colors.white.withOpacity(0.8) : Colors.black54,
           ),
@@ -106,7 +109,7 @@ class _LanguageSwitchScreenState extends State<LanguageSwitchScreen> {
               Navigator.pop(context);
             },
             child: Text(
-              'OK',
+              AppLocalizations.of(context).translate('ok'),
               style: TextStyle(
                 color: _isDarkMode ? Colors.white : const Color(0xFF2196F3),
               ),
@@ -141,7 +144,7 @@ class _LanguageSwitchScreenState extends State<LanguageSwitchScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Select Language',
+          AppLocalizations.of(context).translate('select_language'),
           style: TextStyle(
             color: _isDarkMode ? Colors.white : Colors.black87,
             fontSize: 20,
@@ -196,7 +199,8 @@ class _LanguageSwitchScreenState extends State<LanguageSwitchScreen> {
                       color: _isDarkMode ? Colors.white : Colors.black87,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'Search languages...',
+                      hintText: AppLocalizations.of(context)
+                          .translate('search_languages'),
                       hintStyle: TextStyle(
                         color: _isDarkMode
                             ? Colors.white.withOpacity(0.6)

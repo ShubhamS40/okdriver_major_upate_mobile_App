@@ -1,7 +1,13 @@
 // Buy Plan Screen
 import 'package:flutter/material.dart';
+import 'package:okdriver/driver_profile_screen/components/payu_webview_checkout.dart';
 import 'package:provider/provider.dart';
 import 'package:okdriver/theme/theme_provider.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+// import 'package:okdriver/driver_profile_screen/components/payu_checkout_webview.dart';
+import 'package:okdriver/config/api_config.dart';
+import 'package:okdriver/service/usersession_service.dart';
 
 class BuyPlanScreen extends StatefulWidget {
   const BuyPlanScreen({super.key});
@@ -12,6 +18,10 @@ class BuyPlanScreen extends StatefulWidget {
 
 class _BuyPlanScreenState extends State<BuyPlanScreen> {
   late bool _isDarkMode;
+  bool _isLoading = false;
+  String? _error;
+  List<Map<String, dynamic>> _plans = [];
+  int _selectedPlanIndex = 0;
 
   @override
   void initState() {
@@ -22,62 +32,50 @@ class _BuyPlanScreenState extends State<BuyPlanScreen> {
       setState(() {
         _isDarkMode = themeProvider.isDarkTheme;
       });
+      _fetchPlans();
     });
   }
 
-  int _selectedPlanIndex = 1; // Default to Premium plan
-
-  final List<Map<String, dynamic>> _plans = [
-    {
-      'name': 'Basic',
-      'price': '₹99',
-      'duration': '/month',
-      'features': [
-        'Basic DashCam Recording',
-        'Emergency SOS',
-        'Email Support',
-        '720p Video Quality',
-        '30-day Trip History',
-      ],
-      'color': const Color(0xFF2196F3),
-      'isPopular': false,
-    },
-    {
-      'name': 'Premium',
-      'price': '₹199',
-      'duration': '/month',
-      'features': [
-        'HD DashCam Recording',
-        'Emergency SOS with GPS',
-        'Drowsiness Detection',
-        'AI Voice Assistant',
-        'Priority Support',
-        '1080p Video Quality',
-        'Unlimited Trip History',
-        'Cloud Storage (5GB)',
-      ],
-      'color': const Color(0xFF4CAF50),
-      'isPopular': true,
-    },
-    {
-      'name': 'Pro',
-      'price': '₹299',
-      'duration': '/month',
-      'features': [
-        'All Premium Features',
-        '4K Video Recording',
-        'Advanced AI Analytics',
-        'Real-time Fleet Monitoring',
-        '24/7 Phone Support',
-        'Unlimited Cloud Storage',
-        'Multi-vehicle Support',
-        'Custom Reports',
-        'API Access',
-      ],
-      'color': const Color(0xFFFFD700),
-      'isPopular': false,
-    },
-  ];
+  Future<void> _fetchPlans() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final uri =
+          Uri.parse('${ApiConfig.baseUrl}/api/admin/driverplan/driver-plans');
+      final resp = await http.get(uri);
+      if (resp.statusCode != 200) {
+        throw Exception('Failed to fetch plans (${resp.statusCode})');
+      }
+      final body = json.decode(resp.body) as Map<String, dynamic>;
+      final List<dynamic> data = body['data'] ?? [];
+      final mapped = data
+          .map<Map<String, dynamic>>((p) => {
+                'id': p['id'],
+                'name': p['name'] ?? 'Plan',
+                'price': p['price']?.toString() ?? '0',
+                'durationDays': p['durationDays'] ?? 0,
+                'billingCycle': p['billingCycle'] ?? '',
+                'features': List<String>.from(p['benefits'] ?? []),
+                'color': const Color(0xFF4CAF50),
+                'isPopular': true,
+              })
+          .toList();
+      setState(() {
+        _plans = mapped;
+        _selectedPlanIndex = _plans.isNotEmpty ? 0 : 0;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   void _selectPlan(int index) {
     setState(() {
@@ -85,10 +83,13 @@ class _BuyPlanScreenState extends State<BuyPlanScreen> {
     });
   }
 
-  void _purchasePlan() {
+  Future<void> _purchasePlan() async {
+    if (_plans.isEmpty) return;
     final selectedPlan = _plans[_selectedPlanIndex];
+    final double amount =
+        double.tryParse(selectedPlan['price']?.toString() ?? '0') ?? 0;
 
-    showDialog(
+    final proceed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: _isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
@@ -103,14 +104,14 @@ class _BuyPlanScreenState extends State<BuyPlanScreen> {
           ),
         ),
         content: Text(
-          'You are about to purchase ${selectedPlan['name']} plan for ${selectedPlan['price']}${selectedPlan['duration']}.\n\nProceed with payment?',
+          'You are about to purchase ${selectedPlan['name']} plan for ₹${amount.toStringAsFixed(2)}\n\nProceed with payment?',
           style: TextStyle(
             color: _isDarkMode ? Colors.white.withOpacity(0.8) : Colors.black54,
           ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: Text(
               'Cancel',
               style: TextStyle(
@@ -119,11 +120,7 @@ class _BuyPlanScreenState extends State<BuyPlanScreen> {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Implement payment logic here
-              _showPaymentSuccess();
-            },
+            onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: selectedPlan['color'],
               foregroundColor: Colors.white,
@@ -136,57 +133,57 @@ class _BuyPlanScreenState extends State<BuyPlanScreen> {
         ],
       ),
     );
-  }
 
-  void _showPaymentSuccess() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+    if (proceed != true) return;
+
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+      final uri =
+          Uri.parse('${ApiConfig.baseUrl}/api/driver/payment/payu/create');
+      final driverId =
+          UserSessionService.instance.currentUser?['id']?.toString() ?? '';
+      final resp = await http.post(uri,
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'amount': amount,
+            'planId': selectedPlan['id'],
+            'receipt': 'OKDriver Driver Plan',
+            'callbackBaseUrl': ApiConfig.baseUrl,
+            'driverId': driverId
+          }));
+      if (resp.statusCode != 200) {
+        throw Exception('Payment init failed (${resp.statusCode})');
+      }
+      final body = json.decode(resp.body) as Map<String, dynamic>;
+      if (body['success'] != true) {
+        throw Exception(body['message'] ?? 'Payment init failed');
+      }
+      final String action = body['action'];
+      final Map<String, dynamic> params =
+          Map<String, dynamic>.from(body['params'] as Map);
+
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              PayuCheckoutWebView(actionUrl: action, params: params),
         ),
-        title: Row(
-          children: [
-            const Icon(
-              Icons.check_circle_rounded,
-              color: Color(0xFF4CAF50),
-              size: 28,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Success!',
-              style: TextStyle(
-                color: _isDarkMode ? Colors.white : Colors.black87,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        content: Text(
-          'Your plan has been activated successfully. Enjoy premium features!',
-          style: TextStyle(
-            color: _isDarkMode ? Colors.white.withOpacity(0.8) : Colors.black54,
-          ),
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF4CAF50),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Payment error: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -266,6 +263,17 @@ class _BuyPlanScreenState extends State<BuyPlanScreen> {
               ],
             ),
           ),
+
+          if (_isLoading) const LinearProgressIndicator(),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                _error!,
+                style: TextStyle(
+                    color: _isDarkMode ? Colors.red[200] : Colors.red[700]),
+              ),
+            ),
 
           // Plans List
           Expanded(
@@ -357,7 +365,12 @@ class _BuyPlanScreenState extends State<BuyPlanScreen> {
                                   text: TextSpan(
                                     children: [
                                       TextSpan(
-                                        text: plan['price'],
+                                        text: '₹' +
+                                            (double.tryParse(
+                                                        (plan['price'] ?? '0')
+                                                            .toString()) ??
+                                                    0)
+                                                .toStringAsFixed(2),
                                         style: TextStyle(
                                           color: isSelected
                                               ? plan['color']
@@ -369,7 +382,7 @@ class _BuyPlanScreenState extends State<BuyPlanScreen> {
                                         ),
                                       ),
                                       TextSpan(
-                                        text: plan['duration'],
+                                        text: '/${plan['durationDays']} days',
                                         style: TextStyle(
                                           color: _isDarkMode
                                               ? Colors.white.withOpacity(0.6)
@@ -459,9 +472,11 @@ class _BuyPlanScreenState extends State<BuyPlanScreen> {
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                onPressed: _purchasePlan,
+                onPressed: _plans.isEmpty ? null : _purchasePlan,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _plans[_selectedPlanIndex]['color'],
+                  backgroundColor: _plans.isEmpty
+                      ? (_isDarkMode ? Colors.grey[800] : Colors.grey[300])
+                      : _plans[_selectedPlanIndex]['color'],
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
@@ -469,7 +484,9 @@ class _BuyPlanScreenState extends State<BuyPlanScreen> {
                   elevation: 4,
                 ),
                 child: Text(
-                  'Purchase ${_plans[_selectedPlanIndex]['name']} Plan',
+                  _plans.isEmpty
+                      ? 'No plans available'
+                      : 'Purchase ${_plans[_selectedPlanIndex]['name']} Plan',
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,

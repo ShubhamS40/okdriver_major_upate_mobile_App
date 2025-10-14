@@ -1,14 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:camera/camera.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:okdriver/utlis/android14_storage_helper.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
 import 'package:image_gallery_saver/image_gallery_saver.dart';
 // import 'package:okdriver/utils/android14_storage_helper.dart';
 
@@ -107,73 +102,86 @@ class DashcamBackgroundService {
   // Start background recording
   Future<void> startBackgroundRecording() async {
     if (_isRecording) {
-      print('Already recording, skipping start');
+      print('Background recording already in progress');
       return;
     }
 
     try {
-      // Start the native Android camera recording
-      final result = await _channel.invokeMethod('startBackgroundRecording');
-      print('Native recording result: $result');
+      // Start the native Android camera service
+      final videoPath = await _channel.invokeMethod('startBackgroundRecording');
+      print('Native background recording started, path: $videoPath');
+      _currentVideoPath = videoPath;
 
-      if (result is Map && result['success'] == true) {
-        _isRecording = true;
-        _currentVideoPath = result['filePath'] as String?;
-        _elapsedSeconds = 0;
-        _isServiceRunning = true;
+      // Start the background service
+      final service = FlutterBackgroundService();
+      await service.startService();
+      _backgroundService = service;
+      _isServiceRunning = true;
 
-        // Start duration timer
-        _startDurationTimer();
+      // Start timers
+      _startRecordingTimers();
 
-        // Set up automatic stop
-        _setupAutomaticStop();
-
-        print('Background recording started successfully');
-      } else {
-        throw Exception('Failed to start native recording: $result');
-      }
+      _isRecording = true;
+      print('Background recording started successfully');
     } catch (e) {
       print('Error starting background recording: $e');
       throw Exception('Failed to start background recording: $e');
     }
   }
 
+  // Save video to gallery
+  Future<bool> saveVideoToGallery(String videoPath) async {
+    try {
+      final result = await ImageGallerySaver.saveFile(videoPath);
+      print('Video saved to gallery: $result');
+      return true;
+    } catch (e) {
+      print('Error saving video to gallery: $e');
+      return false;
+    }
+  }
+
   // Stop background recording
-  Future<void> stopBackgroundRecording() async {
-    if (!_isRecording) return;
+  Future<String?> stopBackgroundRecording() async {
+    if (!_isRecording) {
+      print('Not recording, skipping stop');
+      return null;
+    }
 
     try {
       // Stop the native Android camera recording
       final result = await _channel.invokeMethod('stopBackgroundRecording');
-      print('Native recording stop result: $result');
+      print('Native stop recording result: $result');
 
+      // Stop timers
+      _stopRecordingTimers();
+
+      // Update state
       _isRecording = false;
-      _autoStopTimer?.cancel();
-      _durationTimer?.cancel();
       _elapsedSeconds = 0;
 
-      if (result is Map && result['filePath'] != null) {
+      // Stop the background service
+      // if (_backgroundService != null && _isServiceRunning) {
+      //   await _backgroundService!.invoke('stopService');
+      //   _isServiceRunning = false;
+      // }
+
+      // Return the path to the recorded video
+      if (result is Map && result['success'] == true) {
         _currentVideoPath = result['filePath'] as String?;
 
-        // Save to gallery if we have a video file
+        // Automatically save to gallery
         if (_currentVideoPath != null) {
-          try {
-            await _saveVideoToGallery(_currentVideoPath!);
-            print('Video saved to gallery: $_currentVideoPath');
-          } catch (e) {
-            print('Error saving to gallery: $e');
-          }
+          await saveVideoToGallery(_currentVideoPath!);
         }
-      }
 
-      print('Background recording stopped successfully');
+        return _currentVideoPath;
+      } else {
+        return null;
+      }
     } catch (e) {
       print('Error stopping background recording: $e');
-      // Reset state even if there's an error
-      _isRecording = false;
-      _autoStopTimer?.cancel();
-      _durationTimer?.cancel();
-      _elapsedSeconds = 0;
+      return null;
     }
   }
 
@@ -246,6 +254,18 @@ class DashcamBackgroundService {
     return '$minutes:$seconds';
   }
 
+  // Start both recording timers
+  void _startRecordingTimers() {
+    _startDurationTimer();
+    _setupAutomaticStop();
+  }
+
+  // Stop both recording timers
+  void _stopRecordingTimers() {
+    _autoStopTimer?.cancel();
+    _durationTimer?.cancel();
+  }
+
   // Save video to gallery
   Future<void> _saveVideoToGallery(String videoPath) async {
     try {
@@ -270,9 +290,6 @@ class DashcamBackgroundService {
 
   // Dispose resources
   void dispose() {
-    if (_isRecording) {
-      stopBackgroundRecording();
-    }
     _autoStopTimer?.cancel();
     _durationTimer?.cancel();
     _autoStopTimer = null;

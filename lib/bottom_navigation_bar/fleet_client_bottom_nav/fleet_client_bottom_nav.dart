@@ -13,6 +13,7 @@ import 'package:okdriver/service/client_session_service.dart';
 // Import for OpenStreetMap
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:okdriver/language/app_localizations.dart';
 
 class LocationMap extends StatefulWidget {
   final LatLng initialPosition;
@@ -287,7 +288,7 @@ class _FleetClientBottomNavScreenState
     _screens = [
       const ClientVehicleTrackingScreen(),
       const RecentChatScreen(),
-      ProfileScreen(),
+      const ProfileScreen(mode: ProfileMode.fleetClient),
     ];
 
     // Initialize client session service
@@ -329,18 +330,18 @@ class _FleetClientBottomNavScreenState
         type: BottomNavigationBarType.fixed,
         elevation: 8.0,
         // Removed the Home tab from items
-        items: const [
+        items: [
           BottomNavigationBarItem(
-            icon: Icon(Icons.location_on),
-            label: 'Tracking',
+            icon: const Icon(Icons.location_on),
+            label: AppLocalizations.of(context).translate('tracking'),
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.chat),
-            label: 'Chat',
+            icon: const Icon(Icons.chat),
+            label: AppLocalizations.of(context).translate('chat'),
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
+            icon: const Icon(Icons.person),
+            label: AppLocalizations.of(context).translate('profile'),
           ),
         ],
       ),

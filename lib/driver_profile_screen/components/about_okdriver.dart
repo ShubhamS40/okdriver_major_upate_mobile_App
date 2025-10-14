@@ -2,9 +2,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:okdriver/theme/theme_provider.dart';
+import 'package:okdriver/language/app_localizations.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:okdriver/service/usersession_service.dart';
 
 class AboutOkDriverScreen extends StatefulWidget {
-  const AboutOkDriverScreen({super.key});
+  final bool showDelete;
+
+  const AboutOkDriverScreen({super.key, this.showDelete = true});
 
   @override
   State<AboutOkDriverScreen> createState() => _AboutOkDriverScreenState();
@@ -43,26 +48,13 @@ class _AboutOkDriverScreenState extends State<AboutOkDriverScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'About OkDriver',
+          AppLocalizations.of(context).translate('about_okdriver_title'),
           style: TextStyle(
             color: _isDarkMode ? Colors.white : Colors.black87,
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _isDarkMode ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-              color: _isDarkMode ? Colors.white : Colors.black54,
-            ),
-            onPressed: () {
-              setState(() {
-                _isDarkMode = !_isDarkMode;
-              });
-            },
-          ),
-        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -76,9 +68,9 @@ class _AboutOkDriverScreenState extends State<AboutOkDriverScreen> {
 
             // App Description
             _buildSection(
-              title: 'About Our App',
+              title: AppLocalizations.of(context).translate('about_our_app'),
               content:
-                  'OkDriver is a comprehensive driver safety application designed to enhance road safety through advanced AI technology and real-time monitoring. Our mission is to reduce accidents and save lives by providing intelligent driving assistance.',
+                  AppLocalizations.of(context).translate('about_our_app_desc'),
             ),
 
             const SizedBox(height: 20),
@@ -89,26 +81,17 @@ class _AboutOkDriverScreenState extends State<AboutOkDriverScreen> {
             const SizedBox(height: 20),
 
             // Company Info
-            _buildSection(
-              title: 'Company Information',
-              content:
-                  'Developed by SafeDrive Technologies Pvt. Ltd.\nFounded in 2023 with a vision to make roads safer for everyone through innovative technology solutions.',
-            ),
-
-            const SizedBox(height: 20),
-
-            // Version Info
-            _buildVersionInfo(),
+            _buildCompanyInfoSection(),
 
             const SizedBox(height: 20),
 
             // Contact Info
             _buildContactInfo(),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 24),
 
-            // Legal Links
-            _buildLegalLinks(),
+            // Delete Account Button (optional)
+            if (widget.showDelete) _buildDeleteAccountButton(),
           ],
         ),
       ),
@@ -119,38 +102,47 @@ class _AboutOkDriverScreenState extends State<AboutOkDriverScreen> {
     return Center(
       child: Column(
         children: [
+          // Fixed logo with proper fitting and removed text
           Container(
-            width: 100,
-            height: 100,
+            width: 120,
+            height: 120,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF4CAF50), Color(0xFF45A049)],
-              ),
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
                   color: const Color(0xFF4CAF50).withOpacity(0.3),
                   blurRadius: 20,
-                  offset: const Offset(0, 8),
                 ),
               ],
             ),
-            child: const Icon(
-              Icons.directions_car_rounded,
-              color: Colors.white,
-              size: 48,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Image.asset(
+                'assets/okdriver_logo.png',
+                width: 120,
+                height: 120,
+                fit: BoxFit
+                    .contain, // Changed from cover to contain to show full image
+                errorBuilder: (context, error, stackTrace) {
+                  // Fallback to icon if image fails to load
+                  return Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF4CAF50), Color(0xFF45A049)],
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.directions_car_rounded,
+                      color: Colors.white,
+                      size: 48,
+                    ),
+                  );
+                },
+              ),
             ),
           ),
           const SizedBox(height: 16),
-          Text(
-            'OkDriver',
-            style: TextStyle(
-              color: _isDarkMode ? Colors.white : Colors.black87,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 8),
+          // Removed the "OkDriver" text as requested
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
@@ -213,6 +205,99 @@ class _AboutOkDriverScreenState extends State<AboutOkDriverScreen> {
     );
   }
 
+  Widget _buildCompanyInfoSection() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: _isDarkMode
+                ? Colors.black.withOpacity(0.3)
+                : Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            AppLocalizations.of(context).translate('company_information'),
+            style: TextStyle(
+              color: _isDarkMode ? Colors.white : Colors.black87,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Company Name
+          _buildInfoRow(
+            Icons.business_rounded,
+            'Company Name',
+            'OkDriver Smart Dashcams Private Limited',
+          ),
+
+          const SizedBox(height: 12),
+
+          // Company Description
+          Text(
+            AppLocalizations.of(context).translate('company_information_desc'),
+            style: TextStyle(
+              color:
+                  _isDarkMode ? Colors.white.withOpacity(0.8) : Colors.black54,
+              fontSize: 14,
+              height: 1.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          icon,
+          color: const Color(0xFF4CAF50),
+          size: 20,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  color: _isDarkMode
+                      ? Colors.white.withOpacity(0.6)
+                      : Colors.black54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: TextStyle(
+                  color: _isDarkMode ? Colors.white : Colors.black87,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildFeaturesSection() {
     final features = [
       {
@@ -256,7 +341,7 @@ class _AboutOkDriverScreenState extends State<AboutOkDriverScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Key Features',
+            AppLocalizations.of(context).translate('key_features'),
             style: TextStyle(
               color: _isDarkMode ? Colors.white : Colors.black87,
               fontSize: 18,
@@ -318,43 +403,6 @@ class _AboutOkDriverScreenState extends State<AboutOkDriverScreen> {
     );
   }
 
-  Widget _buildVersionInfo() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: _isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: _isDarkMode
-                ? Colors.black.withOpacity(0.3)
-                : Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Version Information',
-            style: TextStyle(
-              color: _isDarkMode ? Colors.white : Colors.black87,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow('App Version:', '1.0.0'),
-          _buildInfoRow('Build Number:', '100'),
-          _buildInfoRow('Release Date:', 'July 2025'),
-          _buildInfoRow('Platform:', 'Flutter'),
-        ],
-      ),
-    );
-  }
-
   Widget _buildContactInfo() {
     return Container(
       padding: const EdgeInsets.all(20),
@@ -375,7 +423,7 @@ class _AboutOkDriverScreenState extends State<AboutOkDriverScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Contact Us',
+            AppLocalizations.of(context).translate('contact_us'),
             style: TextStyle(
               color: _isDarkMode ? Colors.white : Colors.black87,
               fontSize: 18,
@@ -384,51 +432,22 @@ class _AboutOkDriverScreenState extends State<AboutOkDriverScreen> {
           ),
           const SizedBox(height: 16),
           _buildContactRow(
-              Icons.email_rounded, 'Email:', 'support@okdriver.com'),
-          _buildContactRow(Icons.phone_rounded, 'Phone:', '+91 9876543210'),
-          _buildContactRow(Icons.web_rounded, 'Website:', 'www.okdriver.com'),
-          _buildContactRow(Icons.location_on_rounded, 'Address:',
-              'Mumbai, Maharashtra, India'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLegalLinks() {
-    return Column(
-      children: [
-        _buildLegalLinkCard('Privacy Policy', Icons.privacy_tip_outlined),
-        const SizedBox(height: 12),
-        _buildLegalLinkCard('Terms of Service', Icons.description_outlined),
-        const SizedBox(height: 12),
-        _buildLegalLinkCard('Licenses', Icons.article_outlined),
-      ],
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color:
-                  _isDarkMode ? Colors.white.withOpacity(0.6) : Colors.black54,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            value,
-            style: TextStyle(
-              color: _isDarkMode ? Colors.white : Colors.black87,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+              Icons.email_rounded,
+              AppLocalizations.of(context).translate('contact_email_label'),
+              'hello@okdriver.in'),
+          _buildContactRow(
+              Icons.phone_rounded,
+              AppLocalizations.of(context).translate('contact_phone_label'),
+              '+91-9319500121'),
+          _buildContactRow(
+              Icons.web_rounded,
+              AppLocalizations.of(context).translate('contact_website_label'),
+              'okdriver.in'),
+          _buildContactRow(
+              Icons.location_on_rounded,
+              AppLocalizations.of(context).translate('contact_address_label'),
+              'L16-A, Dilshad Garden, New Delhi - 110095'),
+          const SizedBox(height: 16),
         ],
       ),
     );
@@ -470,60 +489,120 @@ class _AboutOkDriverScreenState extends State<AboutOkDriverScreen> {
     );
   }
 
-  Widget _buildLegalLinkCard(String title, IconData icon) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () {
-          // Navigate to legal document
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: _isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: _isDarkMode
-                    ? Colors.black.withOpacity(0.3)
-                    : Colors.grey.withOpacity(0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
+  Widget _buildDeleteAccountButton() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: _isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: _isDarkMode
+                ? Colors.black.withOpacity(0.3)
+                : Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
           ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                color: _isDarkMode
-                    ? Colors.white.withOpacity(0.8)
-                    : const Color(0xFF2196F3),
-                size: 22,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: _isDarkMode ? Colors.white : Colors.black87,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
+        ],
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Danger Zone',
+            style: TextStyle(
+              color: _isDarkMode ? Colors.white : Colors.black87,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Delete your account and all associated data permanently.',
+            style: TextStyle(
+              color:
+                  _isDarkMode ? Colors.white.withOpacity(0.7) : Colors.black54,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFD32F2F),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: _isDarkMode
-                    ? Colors.white.withOpacity(0.4)
-                    : Colors.black26,
-                size: 16,
+              onPressed: _confirmAndDeleteAccount,
+              icon: const Icon(Icons.delete_forever_rounded),
+              label: const Text(
+                'Delete Account',
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
+  }
+
+  Future<void> _confirmAndDeleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Delete Account?'),
+          content: const Text(
+              'This action is permanent and will remove all your data. Do you want to continue?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text(
+                'Delete',
+                style: TextStyle(color: Color(0xFFD32F2F)),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    // Show progress
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    final success = await UserSessionService.instance.deleteAccount();
+
+    if (mounted) Navigator.of(context).pop(); // close progress
+
+    if (!mounted) return;
+
+    if (success) {
+      // Navigate to initial/login screen by clearing stack
+      Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Account deleted successfully')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to delete account')),
+      );
+    }
   }
 }

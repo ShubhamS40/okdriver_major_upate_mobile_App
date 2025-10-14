@@ -57,6 +57,8 @@ app.use('/audio', express.static(audioDir));
 app.use('/api/driver', otpRoutes);
 app.use('/api/drivers', driverRegistration);
 app.use('/api/driver/auth', driverAuthRoutes);
+app.use('/api/driver/payment', require('./routes/driver/payment/driverPaymentRoute'));
+app.use('/api/driver/subscription', require('./routes/driver/subscription/subscriptionRoute'));
 
 // Company routes
 app.use('/api/company', companyRoutes);
@@ -78,6 +80,7 @@ app.use('/api/admin/company/top-up-plan/vehicle-limit', require('./routes/admin/
 app.use('/api/admin/company/top-up-plan/client-limit', require('./routes/admin/company/top-up-plan/clientLimitPlan/clientLimit.routes'));
 app.use('/api/admin/companyplan', require('./routes/admin/company/companyPlan/planRoute'));
 app.use('/api/admin/companies', require('./routes/admin/company/companyRoute'));
+app.use('/api/admin/drivers', require('./routes/admin/driver/driverRoute'));
 app.use('/api/admin/payment', require('./routes/admin/payment/paymentRoute'));
 app.use('/api/admin/support', require('./routes/admin/support/ticketRoute'));
 

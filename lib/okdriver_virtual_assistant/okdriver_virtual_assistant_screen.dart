@@ -393,7 +393,7 @@ class _OkDriverVirtualAssistantScreenState
 
         // Add Flutter TTS as a speaker option
         if (_availableSpeakers is Map) {
-          _availableSpeakers['flutter_tts'] = 'Flutter TTS (Device)';
+          _availableSpeakers['flutter_tts'] = 'Robotic (Default)';
         }
 
         _isLoadingConfig = false;
@@ -485,7 +485,7 @@ class _OkDriverVirtualAssistantScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                'Settings saved successfully. Voice: ${_selectedSpeakerId == 'flutter_tts' ? 'Device TTS' : _availableSpeakers[_selectedSpeakerId] ?? _selectedSpeakerId}'),
+                'Settings saved successfully. Voice: ${_selectedSpeakerId == 'flutter_tts' ? 'Robotic (Default)' : _availableSpeakers[_selectedSpeakerId] ?? _selectedSpeakerId}'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 2),
           ),
@@ -657,14 +657,6 @@ class _OkDriverVirtualAssistantScreenState
             tooltip: 'Settings',
             onPressed: () => _showSettingsDialog(showHistory: false),
           ),
-          IconButton(
-            icon: Icon(
-              Icons.history,
-              color: _isDarkMode ? Colors.white70 : Colors.black54,
-            ),
-            tooltip: 'View History',
-            onPressed: () => _showSettingsDialog(showHistory: true),
-          ),
         ],
       ),
       body: Column(
@@ -686,46 +678,24 @@ class _OkDriverVirtualAssistantScreenState
               ),
             ),
 
-          // Input area with wake word toggle and mic button
+          // Input area with centered mic button
           glass.GlassContainer(
             color: _isDarkMode ? Colors.black : Colors.white,
             opacity: _isDarkMode ? 0.3 : 0.7,
             blur: 10.0,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Wake word toggle
-                  Row(
-                    children: [
-                      Switch(
-                        value: _wakeWordEnabled,
-                        onChanged: (v) => _toggleWakeWord(v),
-                        activeColor: const Color(0xFF9C27B0),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Wake word',
-                        style: TextStyle(
-                          color: _isDarkMode ? Colors.white70 : Colors.black87,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(width: 24),
-                  // Interactive microphone with wave animation
-                  InteractiveMicrophone(
-                      isListening: _isListening,
-                      // isProcessing: _isLoading,
-                      isWakeListening: _isWakeListening,
-                      onTap: _listen
-                      // isDarkMode: _isDarkMode,
-                      // primaryColor: const Color(0xFF9C27B0),
-                      // backgroundColor: _isDarkMode ? Colors.black : Colors.white,
-                      // size: 60.0,
-                      ),
-                ],
+              child: Center(
+                child: InteractiveMicrophone(
+                    isListening: _isListening,
+                    // isProcessing: _isLoading,
+                    isWakeListening: _isWakeListening,
+                    onTap: _listen
+                    // isDarkMode: _isDarkMode,
+                    // primaryColor: const Color(0xFF9C27B0),
+                    // backgroundColor: _isDarkMode ? Colors.black : Colors.white,
+                    // size: 60.0,
+                    ),
               ),
             ),
           ),
@@ -861,29 +831,50 @@ class _OkDriverVirtualAssistantScreenState
                                   subtitle: const Text('Access premium models'),
                                   value: _enablePremium,
                                   onChanged: (value) {
-                                    setState(() {
-                                      _enablePremium = value;
+                                    if (value) {
+                                      // Show coming soon dialog when trying to enable premium
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => AlertDialog(
+                                          title: const Text('Coming Soon'),
+                                          content: const Text(
+                                              'Premium features are coming soon! Stay tuned for updates.'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(context),
+                                              child: const Text('OK'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    } else {
+                                      setState(() {
+                                        _enablePremium = value;
 
-                                      // If premium is disabled, switch to together provider
-                                      if (!_enablePremium &&
-                                          _selectedModelProvider == 'openai') {
-                                        _selectedModelProvider = 'together';
+                                        // If premium is disabled, switch to together provider
+                                        if (!_enablePremium &&
+                                            _selectedModelProvider ==
+                                                'openai') {
+                                          _selectedModelProvider = 'together';
 
-                                        // Select first non-premium model
-                                        final models =
-                                            _availableModels['together'] ?? {};
-                                        if (models.isNotEmpty) {
-                                          for (var entry in models.entries) {
-                                            if (!entry.key.contains('70B') &&
-                                                !entry.key
-                                                    .contains('Premium')) {
-                                              _selectedModelName = entry.key;
-                                              break;
+                                          // Select first non-premium model
+                                          final models =
+                                              _availableModels['together'] ??
+                                                  {};
+                                          if (models.isNotEmpty) {
+                                            for (var entry in models.entries) {
+                                              if (!entry.key.contains('70B') &&
+                                                  !entry.key
+                                                      .contains('Premium')) {
+                                                _selectedModelName = entry.key;
+                                                break;
+                                              }
                                             }
                                           }
                                         }
-                                      }
-                                    });
+                                      });
+                                    }
                                   },
                                 ),
 
@@ -993,7 +984,7 @@ class _OkDriverVirtualAssistantScreenState
                                         horizontal: 12, vertical: 8),
                                   ),
                                   items: {
-                                    'flutter_tts': 'Flutter TTS (Device)',
+                                    'flutter_tts': 'Robotic (Default)',
                                     ..._availableSpeakers as Map,
                                   }
                                       .entries
@@ -1004,9 +995,35 @@ class _OkDriverVirtualAssistantScreenState
                                       .toList(),
                                   onChanged: (value) {
                                     if (value != null) {
-                                      setState(() {
-                                        _selectedSpeakerId = value;
-                                      });
+                                      // Check if it's Varun or Keerti voice
+                                      final voiceName =
+                                          _availableSpeakers[value]
+                                                  ?.toString()
+                                                  .toLowerCase() ??
+                                              '';
+                                      if (voiceName.contains('varun') ||
+                                          voiceName.contains('keerti')) {
+                                        // Show coming soon dialog
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            title: const Text('Coming Soon'),
+                                            content: const Text(
+                                                'This voice option is coming soon! Stay tuned for updates.'),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () =>
+                                                    Navigator.pop(context),
+                                                child: const Text('OK'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      } else {
+                                        setState(() {
+                                          _selectedSpeakerId = value;
+                                        });
+                                      }
                                     }
                                   },
                                 ),
@@ -1141,12 +1158,6 @@ class _OkDriverVirtualAssistantScreenState
               actions: [
                 TextButton(
                   onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
                     // Update the main state with the new values from the dialog
                     this.setState(() {
                       // These values are already updated in the dialog's setState
@@ -1156,10 +1167,7 @@ class _OkDriverVirtualAssistantScreenState
                     _saveUserSettings();
                     Navigator.of(context).pop();
                   },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF9C27B0),
-                  ),
-                  child: const Text('Save'),
+                  child: const Text('Close'),
                 ),
               ],
             );

@@ -1,7 +1,7 @@
 class ApiConfig {
   // Base URL for all API calls
   // Use localhost for local development; switch to production IP when deploying
-  static const String baseUrl = 'http://localhost:5000';
+  static const String baseUrl = 'http://20.204.177.196:5000';
 
   // API Endpoints
   static const String healthCheck = '/';
@@ -12,6 +12,7 @@ class ApiConfig {
   static const String driverRegister = '/api/drivers/register';
   static const String driverLogout = '/api/driver/auth/logout';
   static const String getCurrentDriver = '/api/driver/auth/current';
+  static const String driverDelete = '/api/driver/auth/delete';
 
   // Company Authentication Endpoints
   static const String companyLogin = '/api/company/login';
@@ -49,6 +50,7 @@ class ApiConfig {
 
   // Helper method to get current driver URL
   static String get currentDriverUrl => getUrl(getCurrentDriver);
+  static String get driverDeleteUrl => getUrl(driverDelete);
 
   // Helper for vehicle login URL
   static String get vehicleLoginUrl => getUrl(vehicleLogin);

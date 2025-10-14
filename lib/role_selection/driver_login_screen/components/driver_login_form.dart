@@ -6,6 +6,7 @@ class DriverLoginForm extends StatelessWidget {
   final TextEditingController passwordController;
   final bool isLoading;
   final VoidCallback onLogin;
+  final VoidCallback onForgotPassword;
 
   const DriverLoginForm({
     Key? key,
@@ -14,6 +15,7 @@ class DriverLoginForm extends StatelessWidget {
     required this.passwordController,
     required this.isLoading,
     required this.onLogin,
+    required this.onForgotPassword,
   }) : super(key: key);
 
   @override
@@ -66,9 +68,7 @@ class DriverLoginForm extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () {
-                // Handle forgot password
-              },
+              onPressed: onForgotPassword,
               child: const Text(
                 'Forgot Password?',
                 style: TextStyle(

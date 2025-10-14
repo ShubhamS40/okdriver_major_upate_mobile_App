@@ -182,6 +182,7 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: _isSearching
             ? TextField(
                 controller: _searchController,
@@ -198,36 +199,6 @@ class _RecentChatScreenState extends State<RecentChatScreen> {
                 ),
               )
             : const Text('Chats'),
-        actions: [
-          IconButton(
-            icon: Icon(_isSearching ? Icons.close : Icons.search),
-            onPressed: () {
-              setState(() {
-                _isSearching = !_isSearching;
-                if (!_isSearching) {
-                  _searchController.clear();
-                }
-              });
-            },
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              // Handle menu item selection
-            },
-            itemBuilder: (BuildContext context) {
-              return [
-                const PopupMenuItem<String>(
-                  value: 'new_group',
-                  child: Text('New group'),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'settings',
-                  child: Text('Settings'),
-                ),
-              ];
-            },
-          ),
-        ],
       ),
       body: _filteredConversations.isEmpty
           ? Center(

@@ -736,14 +736,17 @@ class _DashcamScreenState extends State<DashcamScreen>
 
                   const SizedBox(height: 24),
 
-                  // Storage option
+                  // Storage option - FIXED SECTION
                   const Text(
                     'Storage Option:',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  // Changed from Row with spaceEvenly to Wrap for better space handling
+                  Wrap(
+                    spacing: 8.0, // Horizontal space between chips
+                    runSpacing: 4.0, // Vertical space between lines
+                    alignment: WrapAlignment.center,
                     children: [
                       _buildStorageOption('local', 'Local Storage'),
                       _buildStorageOption('cloud', 'Cloud Storage'),
@@ -855,16 +858,23 @@ class _DashcamScreenState extends State<DashcamScreen>
     );
   }
 
+  // FIXED: Updated _buildStorageOption method to handle long text better
   Widget _buildStorageOption(String value, String label) {
     final isSelected = _storageOption == value;
     return ChoiceChip(
-      label: Text(label),
+      label: Text(
+        label,
+        style: const TextStyle(fontSize: 12), // Reduced font size
+        overflow: TextOverflow.ellipsis, // Handle text overflow
+      ),
       selected: isSelected,
       onSelected: (selected) {
         if (selected) {
           _setStorageOption(value);
         }
       },
+      // Add some padding to make chips look better
+      labelPadding: const EdgeInsets.symmetric(horizontal: 4.0),
     );
   }
 

@@ -204,8 +204,8 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       // Increment drowsy events counter
       _drowsyEvents++;
 
-      // Show assistant dialog after 3 drowsy events
-      if (_drowsyEvents >= 3 && !_assistantDialogShown) {
+      // Show assistant dialog after 2 drowsy events
+      if (_drowsyEvents >= 2 && !_assistantDialogShown) {
         _showAssistantBottomSheet();
       }
     } else if (status == 'YAWNING') {
@@ -326,6 +326,11 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
 
                     // Status Information
                     _buildStatusInfo(),
+
+                    const SizedBox(height: 20),
+
+                    // Disclaimer
+                    _buildDisclaimer(),
                   ],
                 ),
               ),
@@ -580,6 +585,56 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDisclaimer() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _isDarkMode
+            ? Colors.orange.withOpacity(0.1)
+            : Colors.orange.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Colors.orange.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline,
+            color: Colors.orange,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Note',
+                  style: TextStyle(
+                    color: _isDarkMode ? Colors.white : Colors.black87,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Background service feature is coming soon. Currently, monitoring works only when the app is active.',
+                  style: TextStyle(
+                    color: _isDarkMode ? Colors.white70 : Colors.black54,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

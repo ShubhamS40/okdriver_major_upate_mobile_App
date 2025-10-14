@@ -132,6 +132,29 @@ class UserSessionService {
     print('User logged out successfully');
   }
 
+  // Delete account via API and clear session locally
+  Future<bool> deleteAccount() async {
+    if (_authToken == null) return false;
+    try {
+      final response = await http.delete(
+        Uri.parse(ApiConfig.driverDeleteUrl),
+        headers: {
+          'Authorization': 'Bearer $_authToken',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) {
+        await logout();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('Delete account error: $e');
+      return false;
+    }
+  }
+
   // Save session data to SharedPreferences
   Future<void> _saveSessionData() async {
     try {
@@ -216,6 +239,31 @@ class UserSessionService {
 
   // Check if user has premium plan
   bool hasPremiumPlan() {
+    // Prefer active subscription from profile cache if present
+    final sub = _currentUser?['activeSubscription'];
+    if (sub != null && (sub['status'] == 'ACTIVE')) return true;
     return _currentUser?['plan']?.toString().toLowerCase() == 'premium';
+  }
+
+  // Fetch active subscription and merge into currentUser cache
+  Future<Map<String, dynamic>?> fetchActiveSubscription() async {
+    if (!_isLoggedIn) return null;
+    final driverId = _currentUser?['id']?.toString();
+    if (driverId == null || driverId.isEmpty) return null;
+    try {
+      final uri = Uri.parse(
+          '${ApiConfig.baseUrl}/api/driver/subscription/active?driverId=$driverId');
+      final r = await http.get(uri).timeout(const Duration(seconds: 15));
+      if (r.statusCode == 200) {
+        final data = json.decode(r.body);
+        if (data['success'] == true && data['active'] == true) {
+          _currentUser = _currentUser ?? {};
+          _currentUser!['activeSubscription'] = data['subscription'];
+          await _saveSessionData();
+          return data['subscription'];
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 }

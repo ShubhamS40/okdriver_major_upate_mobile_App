@@ -477,6 +477,7 @@ class _CompanyChatScreenState extends State<CompanyChatScreen> {
                                 child: const Text('Reload Chat History'),
                               ),
                               const SizedBox(width: 8),
+                              const SizedBox(height: 8),
                               ElevatedButton(
                                 onPressed: _clearMessages,
                                 child: const Text('Clear Messages'),

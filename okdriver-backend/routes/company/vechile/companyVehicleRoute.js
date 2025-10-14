@@ -1,7 +1,7 @@
 const express = require('express');
 const { addVehicle, updateVehicle, deleteVehicle, getAllVehicles, loginVehicle, updateLiveLocation, getLatestLocation, getLocationHistory, getVehicleChatHistory, sendMessageToVehicle, markMessagesAsRead, getUnreadCount, cleanupOldMessages } = require('../../../controller/company/vechile/route');
 const { verifyCompanyAuth } = require('../../../middleware/companyAuth');
-const companyOrVehicleAuth = require('../../../middleware/companyOrVehicleauth');
+const companyOrVehicleAuth = require('../../../middleware/companyOrVehicleAuth');
 
 const router = express.Router();
 

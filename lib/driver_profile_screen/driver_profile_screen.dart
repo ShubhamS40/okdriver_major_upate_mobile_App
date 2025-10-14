@@ -1,5 +1,7 @@
 // Main Profile Screen
 import 'package:flutter/material.dart';
+import 'package:okdriver/driver_profile_screen/components/privacy_policy_screen.dart';
+import 'package:okdriver/driver_profile_screen/components/terms_condition_screen.dart';
 import 'package:okdriver/service/usersession_service.dart';
 import 'package:okdriver/driver_profile_screen/components/about_okdriver.dart';
 import 'package:okdriver/driver_profile_screen/components/language_switch.dart';
@@ -7,9 +9,18 @@ import 'package:okdriver/driver_profile_screen/components/subscription_plan.dart
 import 'package:okdriver/role_selection/role_selection.dart';
 import 'package:provider/provider.dart';
 import 'package:okdriver/theme/theme_provider.dart';
+import 'package:okdriver/driver_profile_screen/components/help_support_screen.dart';
+import 'package:okdriver/language/language_provider.dart';
+import 'package:okdriver/language/app_localizations.dart';
+import 'package:okdriver/driver_profile_screen/components/view_profile_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+enum ProfileMode { vehicleOwner, fleetDriver, fleetClient }
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  final ProfileMode mode;
+
+  const ProfileScreen({super.key, this.mode = ProfileMode.vehicleOwner});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -20,6 +31,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _userName = "John Driver";
   String _userEmail = "john.driver@email.com";
   String _userPlan = "Free Plan";
+  String? _vehicleNumber;
+  bool _notificationsEnabled = true;
+
+  void _showNotificationsSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                AppLocalizations.of(context).translate('notifications'),
+                style: TextStyle(
+                  color: _isDarkMode ? Colors.white : Colors.black87,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _notificationsEnabled
+                        ? AppLocalizations.of(context).translate('enabled')
+                        : AppLocalizations.of(context).translate('disabled'),
+                    style: TextStyle(
+                      color: _isDarkMode
+                          ? Colors.white.withOpacity(0.8)
+                          : Colors.black87,
+                      fontSize: 16,
+                    ),
+                  ),
+                  Switch(
+                    value: _notificationsEnabled,
+                    onChanged: (value) {
+                      setState(() {
+                        _notificationsEnabled = value;
+                      });
+                      Navigator.pop(context);
+                    },
+                    activeColor: const Color(0xFF4CAF50),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   @override
   void initState() {
@@ -39,12 +107,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Load user data from session service
   void _loadUserData() {
     final sessionService = UserSessionService.instance;
-    setState(() {
-      _userName = sessionService.getUserDisplayName();
-      _userEmail = sessionService.getUserEmail();
-      _userPlan =
-          sessionService.hasPremiumPlan() ? "Premium Plan" : "Free Plan";
-    });
+    if (widget.mode == ProfileMode.vehicleOwner) {
+      setState(() {
+        _userName = sessionService.getUserDisplayName();
+        _userEmail = sessionService.getUserEmail();
+        _userPlan =
+            sessionService.hasPremiumPlan() ? "Premium Plan" : "Free Plan";
+      });
+      sessionService.fetchActiveSubscription().then((sub) {
+        if (!mounted) return;
+        if (sub != null) {
+          setState(() {
+            _userPlan =
+                "${sub['plan']?['name'] ?? 'Premium'} (till ${DateTime.tryParse(sub['endAt'] ?? '')?.toLocal().toString().split(' ').first ?? ''})";
+          });
+        }
+      });
+    } else {
+      // Fleet driver/client: simplify fields and, for drivers, load vehicle number
+      setState(() {
+        _userName = sessionService.getUserDisplayName();
+        _userEmail = ""; // hide email on fleet profiles
+        _userPlan = ""; // hide plan badge on fleet profiles
+      });
+      if (widget.mode == ProfileMode.fleetDriver) {
+        _loadVehicleNumber();
+      }
+    }
+  }
+
+  Future<void> _loadVehicleNumber() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final vn = prefs.getString('current_vehicle_number');
+      if (mounted) {
+        setState(() {
+          _vehicleNumber = vn;
+        });
+      }
+    } catch (_) {}
   }
 
   void _toggleTheme() {
@@ -67,6 +168,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Listen to theme changes
     final themeProvider = Provider.of<ThemeProvider>(context);
     _isDarkMode = themeProvider.isDarkTheme;
+    final languageProvider = Provider.of<LanguageProvider>(context);
+    final String currentLanguageName =
+        languageProvider.getLanguageName(languageProvider.currentLocale);
 
     return Scaffold(
       backgroundColor: _isDarkMode ? Colors.black : const Color(0xFFF8F9FA),
@@ -84,75 +188,127 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     const SizedBox(height: 20),
 
-                    // Account Section
-                    _buildSectionTitle('Account'),
-                    _buildOptionCard(
-                      icon: Icons.person_outline_rounded,
-                      title: 'Edit Profile',
-                      subtitle: 'Update your personal information',
-                      onTap: () {
-                        // Navigate to edit profile
-                      },
-                    ),
-                    _buildOptionCard(
-                      icon: Icons.language_rounded,
-                      title: 'Language',
-                      subtitle: 'English (Default)',
-                      onTap: () =>
-                          _navigateToScreen(const LanguageSwitchScreen()),
-                    ),
-
-                    const SizedBox(height: 20),
+                    // Account Section (only for vehicle owner)
+                    if (widget.mode == ProfileMode.vehicleOwner) ...[
+                      _buildSectionTitle(
+                          AppLocalizations.of(context).translate('account')),
+                      _buildOptionCard(
+                        icon: Icons.person_outline_rounded,
+                        title: 'View Profile',
+                        subtitle: 'See your details and subscription plan',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ViewProfileScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                      _buildOptionCard(
+                        icon: Icons.language_rounded,
+                        title:
+                            AppLocalizations.of(context).translate('language'),
+                        subtitle: currentLanguageName,
+                        onTap: () =>
+                            _navigateToScreen(const LanguageSwitchScreen()),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
 
                     // App Settings Section
-                    _buildSectionTitle('App Settings'),
+                    _buildSectionTitle(
+                        AppLocalizations.of(context).translate('app_settings')),
+                    if (widget.mode != ProfileMode.vehicleOwner)
+                      _buildOptionCard(
+                        icon: Icons.language_rounded,
+                        title:
+                            AppLocalizations.of(context).translate('language'),
+                        subtitle: currentLanguageName,
+                        onTap: () =>
+                            _navigateToScreen(const LanguageSwitchScreen()),
+                      ),
                     _buildOptionCard(
                       icon: Icons.notifications_none_rounded,
-                      title: 'Notifications',
-                      subtitle: 'Manage app notifications',
-                      onTap: () {
-                        // Navigate to notifications settings
-                      },
+                      title: AppLocalizations.of(context)
+                          .translate('notifications'),
+                      subtitle: _notificationsEnabled
+                          ? AppLocalizations.of(context).translate('enabled')
+                          : AppLocalizations.of(context).translate('disabled'),
+                      onTap: _showNotificationsSheet,
                     ),
                     _buildThemeToggleCard(),
 
                     const SizedBox(height: 20),
 
                     // Premium Section
-                    _buildSectionTitle('Premium'),
-                    _buildOptionCard(
-                      icon: Icons.diamond_outlined,
-                      title: 'Buy Premium Plan',
-                      subtitle: 'Unlock all premium features',
-                      onTap: () => _navigateToScreen(const BuyPlanScreen()),
-                      isPremium: true,
-                    ),
-
-                    const SizedBox(height: 20),
-
+                    if (widget.mode == ProfileMode.vehicleOwner) ...[
+                      _buildSectionTitle(
+                          AppLocalizations.of(context).translate('premium')),
+                      _buildOptionCard(
+                        icon: Icons.diamond_outlined,
+                        title: AppLocalizations.of(context)
+                            .translate('buy_premium_plan'),
+                        subtitle: AppLocalizations.of(context)
+                            .translate('unlock_premium_features'),
+                        onTap: () => _navigateToScreen(const BuyPlanScreen()),
+                        isPremium: true,
+                      ),
+                      const SizedBox(height: 20),
+                    ],
                     // Support Section
-                    _buildSectionTitle('Support & Info'),
+                    _buildSectionTitle(
+                        AppLocalizations.of(context).translate('support_info')),
                     _buildOptionCard(
-                      icon: Icons.info_outline_rounded,
-                      title: 'About OkDriver',
-                      subtitle: 'Learn more about our app',
-                      onTap: () =>
-                          _navigateToScreen(const AboutOkDriverScreen()),
-                    ),
+                        icon: Icons.info_outline_rounded,
+                        title: AppLocalizations.of(context)
+                            .translate('about_okdriver'),
+                        subtitle: AppLocalizations.of(context)
+                            .translate('learn_more_about_app'),
+                        onTap: () => _navigateToScreen(
+                              AboutOkDriverScreen(
+                                showDelete:
+                                    widget.mode == ProfileMode.vehicleOwner,
+                              ),
+                            )),
                     _buildOptionCard(
                       icon: Icons.help_outline_rounded,
-                      title: 'Help & Support',
-                      subtitle: 'Get help and contact support',
+                      title: AppLocalizations.of(context)
+                          .translate('help_support'),
+                      subtitle: AppLocalizations.of(context)
+                          .translate('get_help_support'),
                       onTap: () {
-                        // Navigate to help
+                        _navigateToScreen(const HelpSupportScreen());
                       },
                     ),
                     _buildOptionCard(
                       icon: Icons.privacy_tip_outlined,
-                      title: 'Privacy Policy',
-                      subtitle: 'Read our privacy policy',
+                      title: AppLocalizations.of(context)
+                          .translate('privacy_policy'),
+                      subtitle: AppLocalizations.of(context)
+                          .translate('read privacy & policy'),
                       onTap: () {
                         // Navigate to privacy policy
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const PrivacyPolicyScreen()));
+                      },
+                    ),
+                    _buildOptionCard(
+                      icon: Icons.gavel_outlined,
+                      title: AppLocalizations.of(context)
+                          .translate('Terms & Conditions'),
+                      subtitle: AppLocalizations.of(context)
+                          .translate('read terms & conditions'),
+                      onTap: () {
+                        // Navigate to terms and conditions
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const TermsAndConditionsScreen()));
                       },
                     ),
 
@@ -192,7 +348,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Row(
             children: [
               Text(
-                'Profile',
+                AppLocalizations.of(context).translate('profile'),
                 style: TextStyle(
                   color: _isDarkMode ? Colors.white : Colors.black87,
                   fontSize: 24,
@@ -200,26 +356,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const Spacer(),
-              GestureDetector(
-                onTap: _toggleTheme,
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: _isDarkMode
-                        ? Colors.white.withOpacity(0.1)
-                        : Colors.grey.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    _isDarkMode
-                        ? Icons.light_mode_rounded
-                        : Icons.dark_mode_rounded,
-                    color: _isDarkMode ? Colors.white : Colors.black54,
-                    size: 20,
-                  ),
-                ),
-              ),
             ],
           ),
 
@@ -251,42 +387,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _userName,
-                      style: TextStyle(
-                        color: _isDarkMode ? Colors.white : Colors.black87,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _userEmail,
-                      style: TextStyle(
-                        color: _isDarkMode
-                            ? Colors.white.withOpacity(0.7)
-                            : Colors.black54,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF4CAF50).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        _userPlan,
-                        style: const TextStyle(
-                          color: Color(0xFF4CAF50),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                    if (widget.mode !=
+                        ProfileMode
+                            .fleetDriver) // 👈 username केवल तब दिखेगा जब fleetDriver न हो
+                      Text(
+                        _userName,
+                        style: TextStyle(
+                          color: _isDarkMode ? Colors.white : Colors.black87,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    ),
+                    if (widget.mode != ProfileMode.fleetDriver)
+                      const SizedBox(height: 4),
+                    if (widget.mode == ProfileMode.fleetDriver &&
+                        (_vehicleNumber?.isNotEmpty ?? false))
+                      Text(
+                        'Vehicle: ${_vehicleNumber!}',
+                        style: TextStyle(
+                          color: _isDarkMode
+                              ? Colors.white.withOpacity(0.7)
+                              : Colors.black54,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    if (widget.mode != ProfileMode.fleetDriver &&
+                        _userEmail.isNotEmpty)
+                      Text(
+                        _userEmail,
+                        style: TextStyle(
+                          color: _isDarkMode
+                              ? Colors.white.withOpacity(0.7)
+                              : Colors.black54,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    const SizedBox(height: 4),
+                    if (_userPlan.isNotEmpty &&
+                        widget.mode == ProfileMode.vehicleOwner)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF4CAF50).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _userPlan,
+                          style: const TextStyle(
+                            color: Color(0xFF4CAF50),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -480,7 +636,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Dark Mode',
+                  AppLocalizations.of(context).translate('dark_mode'),
                   style: TextStyle(
                     color: _isDarkMode ? Colors.white : Colors.black87,
                     fontSize: 16,
@@ -489,7 +645,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  _isDarkMode ? 'Dark theme enabled' : 'Light theme enabled',
+                  _isDarkMode
+                      ? AppLocalizations.of(context)
+                          .translate('dark_theme_enabled')
+                      : AppLocalizations.of(context)
+                          .translate('light_theme_enabled'),
                   style: TextStyle(
                     color: _isDarkMode
                         ? Colors.white.withOpacity(0.6)
@@ -528,14 +688,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   borderRadius: BorderRadius.circular(16),
                 ),
                 title: Text(
-                  'Logout',
+                  AppLocalizations.of(context).translate('logout'),
                   style: TextStyle(
                     color: _isDarkMode ? Colors.white : Colors.black87,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 content: Text(
-                  'Are you sure you want to logout?',
+                  AppLocalizations.of(context).translate('are_you_sure_logout'),
                   style: TextStyle(
                     color: _isDarkMode
                         ? Colors.white.withOpacity(0.8)
@@ -546,7 +706,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(
-                      'Cancel',
+                      AppLocalizations.of(context).translate('cancel'),
                       style: TextStyle(
                         color: _isDarkMode ? Colors.white : Colors.black54,
                       ),
@@ -572,9 +732,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         );
                       }
                     },
-                    child: const Text(
-                      'Logout',
-                      style: TextStyle(color: Colors.red),
+                    child: Text(
+                      AppLocalizations.of(context).translate('logout'),
+                      style: const TextStyle(color: Colors.red),
                     ),
                   ),
                 ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:okdriver/role_selection/fleet_operator_screen/fleet_operator_info_screen.dart';
 import 'package:okdriver/role_selection/vechile_owner_screen/vechile_owner_screen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
@@ -116,10 +117,10 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
 
   void _handleRoleSelection(int roleIndex) {
     switch (roleIndex) {
-      case 0: // Vehicle Owner
+      case 0: // Individual Driver
         _navigateToVehicleOwner();
         break;
-      case 1: // Fleet Operator
+      case 1: // Company Fleet Manager
         _navigateToFleetOperator();
         break;
     }
@@ -150,7 +151,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
       context,
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) =>
-            FleetOperatorScreen(),
+            FleetOperatorInfoScreen(),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return SlideTransition(
             position: animation.drive(
@@ -278,36 +279,37 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
     final screenWidth = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // Animated background - matching onboarding screen
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF0A0A0A),
-                  Colors.black,
-                  const Color(0xFF1A1A1A).withOpacity(0.3),
-                ],
-                stops: const [0.0, 0.7, 1.0],
-              ),
+      body: Stack(children: [
+        // Animated background - matching onboarding screen
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF0A0A0A),
+                Colors.black,
+                const Color(0xFF1A1A1A).withOpacity(0.3),
+              ],
+              stops: const [0.0, 0.7, 1.0],
             ),
           ),
+        ),
 
-          // Floating particles - matching onboarding screen
-          ...List.generate(
-            15,
-            (index) => _buildFloatingParticle(index, screenWidth, screenHeight),
-          ),
+        // Floating particles - matching onboarding screen
+        ...List.generate(
+          15,
+          (index) => _buildFloatingParticle(index, screenWidth, screenHeight),
+        ),
 
-          SafeArea(
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: _slideAnimation,
-                child: Padding(
+        SafeArea(
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: SlideTransition(
+              position: _slideAnimation,
+              child: Stack(children: [
+                // Main scrollable content
+                Padding(
                   padding: const EdgeInsets.all(24.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -366,95 +368,114 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
 
                       const SizedBox(height: 60),
 
-                      // Role Cards
+                      // Role Cards - Made scrollable
                       Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // Vehicle Owner Card
-                            _buildRoleCard(
-                              index: 0,
-                              icon: Icons.person_outline,
-                              title: 'Vehicle Owner',
-                              subtitle: 'Own Vehicle Owner',
-                              features: ['Smart Dashcam', 'AI Safety'],
-                              primaryColor: const Color(0xFF2196F3),
-                            ),
-
-                            const SizedBox(height: 16),
-
-                            // Fleet Operator Card
-                            _buildRoleCard(
-                              index: 1,
-                              icon: Icons.business_outlined,
-                              title: 'Fleet Operator',
-                              subtitle: 'Business Admin',
-                              features: ['Fleet Management', 'Analytics'],
-                              primaryColor: const Color(0xFFFF9800),
-                            ),
-
-                            const SizedBox(height: 16),
-
-                            // Company Driver Card removed
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // Continue Button
-                      if (_selectedRole != null)
-                        Container(
-                          width: double.infinity,
-                          height: 56,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Colors.white, Colors.grey],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.white.withOpacity(0.2),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Column(
+                            children: [
+                              // Individual Driver Card (Personal Vehicle)
+                              _buildRoleCard(
+                                index: 0,
+                                icon: Icons.person_pin_circle_outlined,
+                                title: 'Individual Driver',
+                                subtitle:
+                                    'Personal Vehicle Owner and Cab Drivers',
+                                description:
+                                    'For private vehicle owners and cab drivers seeking advanced driving features',
+                                features: [
+                                  'Smart Dashcam',
+                                  'Emergency SOS',
+                                  'Drowsiness Detection',
+                                  'AI Assistant',
+                                ],
+                                primaryColor: const Color(0xFF2196F3),
                               ),
+
+                              const SizedBox(height: 20),
+
+                              // Company Fleet Manager Card
+                              _buildRoleCard(
+                                index: 1,
+                                icon: Icons.business_center_outlined,
+                                title: 'Fleet Operator',
+                                subtitle: 'Company Drivers and Client Login ',
+                                description:
+                                    'Only For Registered Drivers and Clients of Fleet Companies',
+                                features: [
+                                  'Fleet GPS Tracking',
+                                  'Real-time Monitoring',
+                                  'Chat Support'
+                                ],
+                                primaryColor: const Color(0xFFFF9800),
+                              ),
+
+                              const SizedBox(
+                                  height:
+                                      100), // Extra space for continue button
                             ],
                           ),
-                          child: ElevatedButton(
-                            onPressed: () => _selectRole(_selectedRole!),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              shadowColor: Colors.transparent,
-                              foregroundColor: Colors.black,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  'Continue',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 0.5,
-                                  ),
-                                ),
-                                SizedBox(width: 8),
-                                Icon(Icons.arrow_forward_rounded, size: 20),
-                              ],
-                            ),
-                          ),
                         ),
+                      ),
                     ],
                   ),
                 ),
-              ),
+
+                // Continue Button - Positioned absolutely
+                if (_selectedRole != null)
+                  Positioned(
+                    bottom: 20,
+                    left: 24,
+                    right: 24,
+                    child: Container(
+                      width: double.infinity,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Colors.white, Colors.grey],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.2),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton(
+                        onPressed: () => _selectRole(_selectedRole!),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          foregroundColor: Colors.black,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'Continue',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            SizedBox(width: 8),
+                            Icon(Icons.arrow_forward_rounded, size: 20),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ]),
             ),
           ),
-        ],
-      ),
+        )
+      ]),
     );
   }
 
@@ -463,6 +484,7 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
     required IconData icon,
     required String title,
     required String subtitle,
+    required String description,
     required List<String> features,
     required Color primaryColor,
   }) {
@@ -480,13 +502,12 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
         },
         child: Container(
           width: double.infinity,
-          constraints: const BoxConstraints(maxHeight: 120), // Reduced height
-          padding: const EdgeInsets.all(16), // Reduced padding
+          padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: isSelected
                 ? Colors.white.withOpacity(0.15)
                 : Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isSelected
                   ? primaryColor.withOpacity(0.6)
@@ -507,80 +528,152 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
               ),
             ],
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Icon container
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  gradient: isSelected
-                      ? LinearGradient(
-                          colors: [primaryColor, primaryColor.withOpacity(0.7)],
-                        )
-                      : LinearGradient(
-                          colors: [
-                            Colors.white.withOpacity(0.2),
-                            Colors.white.withOpacity(0.1),
-                          ],
+              Row(
+                children: [
+                  // Icon container
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      gradient: isSelected
+                          ? LinearGradient(
+                              colors: [
+                                primaryColor,
+                                primaryColor.withOpacity(0.7)
+                              ],
+                            )
+                          : LinearGradient(
+                              colors: [
+                                Colors.white.withOpacity(0.2),
+                                Colors.white.withOpacity(0.1),
+                              ],
+                            ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: primaryColor.withOpacity(0.4),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : [],
+                    ),
+                    child: Icon(
+                      icon,
+                      color: isSelected ? Colors.white : Colors.white70,
+                      size: 28,
+                    ),
+                  ),
+
+                  const SizedBox(width: 16),
+
+                  // Title and subtitle
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: isSelected
-                      ? [
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Selection indicator
+                  if (isSelected)
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: primaryColor,
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: [
                           BoxShadow(
                             color: primaryColor.withOpacity(0.4),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
-                        ]
-                      : [],
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.check,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // Description
+              Text(
+                description,
+                style: TextStyle(
+                  color: Colors.white60,
+                  fontSize: 14,
+                  height: 1.4,
                 ),
-                child: Icon(
-                  icon,
-                  color: isSelected ? Colors.white : Colors.white70,
-                  size: 24,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+
+              const SizedBox(height: 16),
+
+              // Features
+              Text(
+                'Key Features:',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
 
-              const SizedBox(width: 16),
+              const SizedBox(height: 8),
 
-              // Content
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    // Features as chips
-                    Wrap(
-                      spacing: 4,
-                      runSpacing: 2,
-                      children: features
-                          .take(2)
-                          .map((feature) => Container(
+              // Features as wrapped chips with proper constraints
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  return Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: features
+                        .map((feature) => IntrinsicWidth(
+                              child: Container(
+                                constraints: BoxConstraints(
+                                  maxWidth: constraints.maxWidth * 0.45,
+                                ),
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
+                                    horizontal: 10, vertical: 6),
                                 decoration: BoxDecoration(
                                   color: isSelected
                                       ? primaryColor.withOpacity(0.2)
                                       : Colors.white.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: isSelected
                                         ? primaryColor.withOpacity(0.4)
@@ -591,41 +684,20 @@ class _RoleSelectionScreenState extends State<RoleSelectionScreen>
                                   feature,
                                   style: TextStyle(
                                     color: isSelected
-                                        ? primaryColor
+                                        ? primaryColor.withOpacity(0.9)
                                         : Colors.white70,
-                                    fontSize: 9,
+                                    fontSize: 11,
                                     fontWeight: FontWeight.w500,
                                   ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              ))
-                          .toList(),
-                    ),
-                  ],
-                ),
+                              ),
+                            ))
+                        .toList(),
+                  );
+                },
               ),
-
-              // Selection indicator
-              if (isSelected)
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: primaryColor,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: primaryColor.withOpacity(0.4),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.check,
-                    color: Colors.white,
-                    size: 16,
-                  ),
-                ),
             ],
           ),
         ),

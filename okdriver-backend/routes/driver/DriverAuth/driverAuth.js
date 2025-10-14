@@ -6,5 +6,6 @@ const logoutController = require('../../../controller/driver/DriverAuth/logoutCo
 // Protected routes (require authentication)
 router.get('/current', authenticateDriver, logoutController.getCurrentDriver);
 router.post('/logout', authenticateDriver, logoutController.logout);
+router.delete('/delete', authenticateDriver, logoutController.deleteAccount);
 
 module.exports = router; 

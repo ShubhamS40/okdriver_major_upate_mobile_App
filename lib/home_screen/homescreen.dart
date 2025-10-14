@@ -8,6 +8,7 @@ import 'package:okdriver/role_selection/role_selection.dart';
 
 import 'package:provider/provider.dart';
 import 'package:okdriver/theme/theme_provider.dart';
+import 'package:okdriver/language/app_localizations.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -82,14 +83,16 @@ class _HomeScreenState extends State<HomeScreen> {
           borderRadius: BorderRadius.circular(16),
         ),
         title: Text(
-          feature,
+          AppLocalizations.of(context)
+              .translate('feature_coming_soon_title', [feature]),
           style: TextStyle(
             color: _isDarkMode ? Colors.white : Colors.black87,
             fontWeight: FontWeight.bold,
           ),
         ),
         content: Text(
-          'This feature is coming soon! We\'re working hard to bring you the best $feature experience.',
+          AppLocalizations.of(context)
+              .translate('feature_coming_soon_message', [feature]),
           style: TextStyle(
             color: _isDarkMode ? Colors.white.withOpacity(0.8) : Colors.black54,
           ),
@@ -98,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
-              'OK',
+              AppLocalizations.of(context).translate('ok'),
               style: TextStyle(
                 color: _isDarkMode ? Colors.white : const Color(0xFF2196F3),
               ),
@@ -193,7 +196,9 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _isLoading ? 'Hello!' : 'Hello ${_driverName}!',
+                  _isLoading
+                      ? AppLocalizations.of(context).translate('hello')
+                      : '${_driverName}',
                   style: TextStyle(
                     color: _isDarkMode ? Colors.white : Colors.black87,
                     fontSize: 18,
@@ -201,7 +206,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 Text(
-                  '${_getTimeGreeting()}! Drive Safe Today',
+                  '${_getTimeGreeting()}! ${AppLocalizations.of(context).translate('drive_safe_today')}',
                   style: TextStyle(
                     color: _isDarkMode
                         ? Colors.white.withOpacity(0.7)
@@ -214,55 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // Theme Toggle Button
-          GestureDetector(
-            onTap: _toggleTheme,
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: _isDarkMode
-                    ? Colors.white.withOpacity(0.1)
-                    : Colors.grey.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                _isDarkMode
-                    ? Icons.light_mode_rounded
-                    : Icons.dark_mode_rounded,
-                color: _isDarkMode ? Colors.white : Colors.black54,
-                size: 20,
-              ),
-            ),
-          ),
-
-          const SizedBox(width: 12),
-
-          // Logout Button
-          GestureDetector(
-            onTap: _logout,
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: _isDarkMode
-                    ? Colors.red.withOpacity(0.2)
-                    : Colors.red.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: _isDarkMode
-                      ? Colors.red.withOpacity(0.3)
-                      : Colors.red.withOpacity(0.2),
-                  width: 1,
-                ),
-              ),
-              child: Icon(
-                Icons.logout_rounded,
-                color: Colors.red,
-                size: 20,
-              ),
-            ),
-          ),
+          // Buttons removed
         ],
       ),
     );
@@ -334,7 +291,7 @@ class _HomeScreenState extends State<HomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Safety Features',
+          AppLocalizations.of(context).translate('safety_features'),
           style: TextStyle(
             color: _isDarkMode ? Colors.white : Colors.black87,
             fontSize: 22,
@@ -369,8 +326,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildDashCamCard() {
     return Expanded(
       child: _buildFeatureCard(
-        title: 'DashCam',
-        description: 'Record your journey for safety',
+        title: AppLocalizations.of(context).translate('dashcam_title'),
+        description: AppLocalizations.of(context).translate('dashcam_desc'),
         icon: Icons.videocam_rounded,
         gradient: const LinearGradient(
           colors: [Color(0xFF4CAF50), Color(0xFF45A049)],
@@ -390,8 +347,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildEmergencySOSCard() {
     return Expanded(
       child: _buildFeatureCard(
-        title: 'Emergency SOS',
-        description: 'Quick help in critical situations',
+        title: AppLocalizations.of(context).translate('emergency_sos'),
+        description:
+            AppLocalizations.of(context).translate('emergency_sos_desc'),
         icon: Icons.sos_rounded,
         gradient: const LinearGradient(
           colors: [Color(0xFFFF5722), Color(0xFFE64A19)],
@@ -404,13 +362,19 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildDrowsinessCard() {
     return Expanded(
       child: _buildFeatureCard(
-        title: 'Drowsiness Monitoring',
-        description: 'AI-powered drowsiness detection',
+        title: AppLocalizations.of(context).translate('drowsiness_monitoring'),
+        description: AppLocalizations.of(context)
+            .translate('drowsiness_monitoring_desc'),
         icon: Icons.visibility_rounded,
         gradient: const LinearGradient(
           colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
         ),
-        onTap: () {
+        onTap: () async {
+          final hasPremium = UserSessionService.instance.hasPremiumPlan();
+          if (!hasPremium) {
+            _showPremiumRequiredDialog();
+            return;
+          }
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -425,18 +389,57 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildOkDriverCard() {
     return Expanded(
       child: _buildFeatureCard(
-        title: 'OkDriver Assistant',
-        description: 'Can talk to you and assist you',
+        title: AppLocalizations.of(context).translate('assistant_title'),
+        description: AppLocalizations.of(context).translate('assistant_desc'),
         icon: Icons.smart_toy_rounded,
         gradient: const LinearGradient(
           colors: [Color(0xFF9C27B0), Color(0xFF7B1FA2)],
         ),
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const OkDriverVirtualAssistantScreen(),
+        onTap: () async {
+          final hasPremium = UserSessionService.instance.hasPremiumPlan();
+          if (!hasPremium) {
+            _showPremiumRequiredDialog();
+            return;
+          }
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const OkDriverVirtualAssistantScreen(),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showPremiumRequiredDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Premium Required',
+          style: TextStyle(
+            color: _isDarkMode ? Colors.white : Colors.black87,
+            fontWeight: FontWeight.bold,
           ),
         ),
+        content: Text(
+          'Please purchase a subscription to access this feature.',
+          style: TextStyle(
+            color: _isDarkMode ? Colors.white70 : Colors.black54,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('OK',
+                style: TextStyle(
+                    color:
+                        _isDarkMode ? Colors.white : const Color(0xFF2196F3))),
+          ),
+        ],
       ),
     );
   }

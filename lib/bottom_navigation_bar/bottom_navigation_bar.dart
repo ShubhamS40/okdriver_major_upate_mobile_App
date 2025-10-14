@@ -4,6 +4,7 @@ import 'package:okdriver/driver_profile_screen/driver_profile_screen.dart';
 import 'package:okdriver/home_screen/homescreen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:okdriver/language/app_localizations.dart';
 
 class BottomNavScreen extends StatefulWidget {
   @override
@@ -39,18 +40,18 @@ class _BottomNavScreenState extends State<BottomNavScreen> {
         backgroundColor: isDarkMode ? Colors.black : Colors.white,
         selectedItemColor: isDarkMode ? Colors.white : Colors.blue,
         unselectedItemColor: isDarkMode ? Colors.grey : Colors.grey.shade600,
-        items: const [
+        items: [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
+            icon: const Icon(Icons.home),
+            label: AppLocalizations.of(context).translate('home'),
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.videocam),
-            label: 'Dashcam',
+            icon: const Icon(Icons.videocam),
+            label: AppLocalizations.of(context).translate('dashcam'),
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
+            icon: const Icon(Icons.person),
+            label: AppLocalizations.of(context).translate('profile'),
           ),
         ],
       ),

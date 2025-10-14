@@ -1,27 +1,30 @@
-# ---- Base Image ----
-FROM node:18-alpine AS base
+# -----------------------------
+# Stage 1 — Build the app
+# -----------------------------
+FROM node:20-alpine AS builder
 
-# Set working directory inside container
-WORKDIR /usr/src/app
+WORKDIR /app
 
-# Install pnpm globally
-RUN npm install -g pnpm
+COPY package*.json ./
+COPY pnpm-lock.yaml* ./
+RUN npm install -g pnpm && pnpm install --frozen-lockfile
 
-# Copy only package.json and lockfile first (better caching)
-COPY package*.json pnpm-lock.yaml* ./
-
-# Install dependencies
-RUN pnpm install --frozen-lockfile
-
-# ---- Copy App Files ----
 COPY . .
 
-# ---- Prisma Generate ----
-# Ensure prisma schema is available before generate
+# 🟢 Generate Prisma Client
 RUN npx prisma generate
 
-# ---- Expose Port ----
-EXPOSE 3000
+# -----------------------------
+# Stage 2 — Run the app
+# -----------------------------
+FROM node:20-alpine
 
-# ---- Start Command ----
+WORKDIR /app
+
+COPY --from=builder /app /app
+
+ENV NODE_ENV=production
+ENV PORT=5000
+EXPOSE 5000
+
 CMD ["node", "index.js"]

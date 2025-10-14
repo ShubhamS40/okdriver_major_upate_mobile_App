@@ -277,6 +277,7 @@ class _ClientVehicleTrackingScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: const Text('Vehicle Tracking'),
         backgroundColor: Colors.blue,
         actions: [
@@ -293,11 +294,6 @@ class _ClientVehicleTrackingScreenState
             icon: const Icon(Icons.refresh),
             onPressed: _refreshData,
             tooltip: 'Refresh Data',
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-            tooltip: 'Logout',
           ),
         ],
       ),

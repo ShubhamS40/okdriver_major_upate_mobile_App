@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav/fleet_driver_bottom_nav.dart';
-import 'package:okdriver/home_screen/homescreen.dart';
 // import 'package:okdriver/bottom_navigation_bar/fleet_driver_bottom_nav.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -144,6 +142,46 @@ class _DriverLoginScreenState extends State<DriverLoginScreen>
     }
   }
 
+  void _handleForgotPassword() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Row(
+            children: [
+              Icon(Icons.info_outline, color: Color(0xFF4CAF50)),
+              SizedBox(width: 12),
+              Text(
+                'Forgot Password',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Please contact your company admin to reset your password.',
+            style: TextStyle(color: Colors.white70, fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'OK',
+                style: TextStyle(
+                  color: Color(0xFF4CAF50),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -174,13 +212,6 @@ class _DriverLoginScreenState extends State<DriverLoginScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Back button
-                    IconButton(
-                      icon:
-                          const Icon(Icons.arrow_back_ios, color: Colors.white),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-
                     const SizedBox(height: 20),
 
                     // Header
@@ -197,6 +228,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen>
                           passwordController: _passwordController,
                           isLoading: _isLoading,
                           onLogin: _handleLogin,
+                          onForgotPassword: _handleForgotPassword,
                         ),
                       ),
                     ),
