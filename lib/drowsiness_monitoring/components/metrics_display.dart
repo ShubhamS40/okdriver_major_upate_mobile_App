@@ -11,9 +11,12 @@ class MetricsDisplay extends StatelessWidget {
     required this.isDarkMode,
   }) : super(key: key);
 
+  // Changed threshold from 10 to 7 seconds
+  static const int THRESHOLD_FRAMES = 7;
+
   @override
   Widget build(BuildContext context) {
-    // Check for drowsiness event completion (when drowsy frames reach 10)
+    // Check for drowsiness event completion (when drowsy frames reach 7)
     _checkDrowsinessEvent();
 
     if (metrics == null) {
@@ -133,9 +136,9 @@ class MetricsDisplay extends StatelessWidget {
   void _checkDrowsinessEvent() {
     if (metrics != null) {
       final drowsyFrames = metrics!['drowsy_frames'] ?? 0;
-      // When drowsy frames reach 10, trigger alert
-      if (drowsyFrames >= 10) {
-        print("Bipp Bipp");
+      // When drowsy frames reach 7, trigger alert
+      if (drowsyFrames >= THRESHOLD_FRAMES) {
+        print("Bipp Bipp - Drowsiness Alert! (${drowsyFrames}s)");
         // Optional: Add haptic feedback
         HapticFeedback.vibrate();
       }
@@ -216,13 +219,12 @@ class MetricsDisplay extends StatelessWidget {
   Widget _buildProgressSection() {
     final drowsyFrames = metrics!['drowsy_frames'] ?? 0;
     final yawningFrames = metrics!['yawning_frames'] ?? 0;
-    final maxFrames = 10.0; // progress out of 10
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Detection Progress',
+          'Detection Progress (7 seconds threshold)',
           style: TextStyle(
             color: isDarkMode ? Colors.white : Colors.black87,
             fontSize: 14,
@@ -255,24 +257,25 @@ class MetricsDisplay extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '$drowsyFrames/10',
+                        '$drowsyFrames/${THRESHOLD_FRAMES}s',
                         style: TextStyle(
                           color: isDarkMode ? Colors.white70 : Colors.black54,
                           fontSize: 12,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 4),
                   LinearProgressIndicator(
-                    value: drowsyFrames / 10.0,
+                    value: drowsyFrames / THRESHOLD_FRAMES.toDouble(),
                     backgroundColor: isDarkMode
                         ? Colors.white.withOpacity(0.1)
                         : Colors.grey.withOpacity(0.2),
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      drowsyFrames >= 10
+                      drowsyFrames >= THRESHOLD_FRAMES
                           ? Colors.red
-                          : (drowsyFrames >= 5 ? Colors.orange : Colors.green),
+                          : (drowsyFrames >= 4 ? Colors.orange : Colors.green),
                     ),
                   ),
                 ],
@@ -307,22 +310,26 @@ class MetricsDisplay extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '$yawningFrames/10',
+                        '$yawningFrames/${THRESHOLD_FRAMES}s',
                         style: TextStyle(
                           color: isDarkMode ? Colors.white70 : Colors.black54,
                           fontSize: 12,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 4),
                   LinearProgressIndicator(
-                    value: yawningFrames / 10.0,
+                    value: yawningFrames / THRESHOLD_FRAMES.toDouble(),
                     backgroundColor: isDarkMode
                         ? Colors.white.withOpacity(0.1)
                         : Colors.grey.withOpacity(0.2),
-                    valueColor:
-                        AlwaysStoppedAnimation<Color>(Colors.yellow.shade700),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      yawningFrames >= THRESHOLD_FRAMES
+                          ? Colors.red
+                          : Colors.yellow.shade700,
+                    ),
                   ),
                 ],
               ),
@@ -416,8 +423,8 @@ class MetricsDisplay extends StatelessWidget {
   }
 
   Color _getDrowsyFramesColor(int frames) {
-    if (frames >= 5) return Colors.red; // Changed from 15 to 5
-    if (frames >= 3) return Colors.orange; // Changed from 10 to 3
+    if (frames >= 5) return Colors.red; // Critical at 5 seconds
+    if (frames >= 3) return Colors.orange; // Warning at 3 seconds
     return Colors.green;
   }
 

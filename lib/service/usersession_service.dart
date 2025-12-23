@@ -239,10 +239,11 @@ class UserSessionService {
 
   // Check if user has premium plan
   bool hasPremiumPlan() {
-    // Prefer active subscription from profile cache if present
     final sub = _currentUser?['activeSubscription'];
-    if (sub != null && (sub['status'] == 'ACTIVE')) return true;
-    return _currentUser?['plan']?.toString().toLowerCase() == 'premium';
+    if (_isSubscriptionActive(sub)) {
+      return true;
+    }
+    return false;
   }
 
   // Fetch active subscription and merge into currentUser cache
@@ -256,14 +257,32 @@ class UserSessionService {
       final r = await http.get(uri).timeout(const Duration(seconds: 15));
       if (r.statusCode == 200) {
         final data = json.decode(r.body);
-        if (data['success'] == true && data['active'] == true) {
+        if (data['success'] == true) {
           _currentUser = _currentUser ?? {};
-          _currentUser!['activeSubscription'] = data['subscription'];
-          await _saveSessionData();
-          return data['subscription'];
+          if (data['active'] == true && data['subscription'] != null) {
+            _currentUser!['activeSubscription'] = data['subscription'];
+            await _saveSessionData();
+            return data['subscription'];
+          } else {
+            _currentUser!.remove('activeSubscription');
+            await _saveSessionData();
+            return null;
+          }
         }
       }
     } catch (_) {}
     return null;
+  }
+
+  bool _isSubscriptionActive(dynamic subscription) {
+    if (subscription is! Map) return false;
+    final status =
+        subscription['status']?.toString().toUpperCase() ?? 'INACTIVE';
+    final endAtRaw = subscription['endAt']?.toString();
+    if (status != 'ACTIVE') return false;
+    if (endAtRaw == null) return false;
+    final endAt = DateTime.tryParse(endAtRaw);
+    if (endAt == null) return false;
+    return !endAt.isBefore(DateTime.now());
   }
 }

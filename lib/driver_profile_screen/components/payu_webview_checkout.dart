@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'dart:async';
+import 'package:okdriver/home_screen/homescreen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class PayuCheckoutWebView extends StatefulWidget {
@@ -16,6 +18,8 @@ class PayuCheckoutWebView extends StatefulWidget {
 class _PayuCheckoutWebViewState extends State<PayuCheckoutWebView> {
   late final WebViewController _controller;
   bool _loading = true;
+  bool _paymentSuccessHandled = false;
+  Timer? _redirectTimer;
 
   @override
   void initState() {
@@ -57,9 +61,23 @@ class _PayuCheckoutWebViewState extends State<PayuCheckoutWebView> {
               } catch (_) {}
             }
           }
+          // Detect success keywords in URL and handle success
+          if (_looksLikeSuccessUrl(url)) {
+            _handlePaymentSuccess();
+          }
           return NavigationDecision.navigate;
         },
-        onPageFinished: (_) => setState(() => _loading = false),
+        onPageFinished: (_) async {
+          setState(() => _loading = false);
+          final url = await _controller.currentUrl();
+          if (url != null && _looksLikeSuccessUrl(url)) {
+            _handlePaymentSuccess();
+          }
+        },
+        onWebResourceError: (WebResourceError error) {
+          // Some gateways redirect to non-https callback causing failures; avoid showing error page
+          // We keep the webview silent and rely on URL-based success detection or backend update
+        },
       ));
 
     final formInputs = widget.params.entries.map((e) {
@@ -80,6 +98,85 @@ class _PayuCheckoutWebViewState extends State<PayuCheckoutWebView> {
     _controller.loadHtmlString(html);
   }
 
+  bool _looksLikeSuccessUrl(String url) {
+    final lower = url.toLowerCase();
+    // Common PayU success indicators; adjust as needed for backend callback routes
+    return lower.contains('status=success') ||
+        lower.contains('payment/success') ||
+        lower.contains('success=true') ||
+        lower.contains('payu') && lower.contains('success') ||
+        lower.contains('txnstatus=success') ||
+        lower.contains('result=success') ||
+        lower.contains('payment_status=success') ||
+        lower.contains('20.204.177.196') &&
+            (lower.contains('success') || lower.contains('completed')) ||
+        lower.contains('return') && lower.contains('success');
+  }
+
+  void _handlePaymentSuccess() {
+    if (_paymentSuccessHandled) return;
+    _paymentSuccessHandled = true;
+
+    if (mounted) {
+      // Show success dialog instead of snackbar for better visibility
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          backgroundColor: Colors.green.shade50,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green, size: 28),
+              const SizedBox(width: 12),
+              const Text(
+                'Payment Successful!',
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Your payment has been processed successfully. You will be redirected to home screen in 5 seconds.',
+            style: TextStyle(fontSize: 16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close dialog
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                  (route) => false,
+                );
+              },
+              child: const Text(
+                'Go to Home',
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    _redirectTimer?.cancel();
+    _redirectTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Close dialog if still open
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -88,8 +185,22 @@ class _PayuCheckoutWebViewState extends State<PayuCheckoutWebView> {
         children: [
           WebViewWidget(controller: _controller),
           if (_loading) const LinearProgressIndicator(),
+          if (_paymentSuccessHandled)
+            const Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: LinearProgressIndicator(),
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _redirectTimer?.cancel();
+    super.dispose();
   }
 }

@@ -51,11 +51,16 @@ const createPaymentOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Amount is required' });
         }
 
-        // Success/Failure return URLs handled by backend which will then redirect to website
-        const websiteBase = process.env.WEBSITE_BASE_URL || 'http://localhost:3000';
-        const backendBase = process.env.BACKEND_BASE_URL || 'http://localhost:5000';
-        const surl = `${backendBase}/api/admin/companyplan/payment/payu-return`;
-        const furl = `${backendBase}/api/admin/companyplan/payment/payu-return`;
+        // Prefer website return URL in development to avoid localhost backend callback issues
+        const websiteBase = process.env.WEBSITE_BASE_URL || 'https://okdriver.in';
+        const backendBase = 'https://backend.okdriver.in';
+        const useWebsiteReturn = process.env.NODE_ENV !== 'production';
+        const surl = useWebsiteReturn
+            ? `${websiteBase}/api/payment/payu-return`
+            : `${backendBase}/api/admin/companyplan/payment/payu-return`;
+        const furl = useWebsiteReturn
+            ? `${websiteBase}/api/payment/payu-return`
+            : `${backendBase}/api/admin/companyplan/payment/payu-return`;
 
         const authCompany = req.company || {};
 

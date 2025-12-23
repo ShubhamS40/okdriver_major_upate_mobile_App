@@ -64,6 +64,7 @@ dependencies:
   socket_io_client: ^3.1.2
   url_launcher: ^6.3.2
   webview_flutter: ^4.13.0
+  digia_ui: ^0.4.3
   
 
 dev_dependencies:

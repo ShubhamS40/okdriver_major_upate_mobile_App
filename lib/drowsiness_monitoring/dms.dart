@@ -41,9 +41,8 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
   Timer? _pingTimer;
 
   // Assistant dialog state
-  bool _showAssistantDialog = false;
   int _drowsyEvents = 0;
-  bool _assistantDialogShown = false;
+  int _lastDialogEvent = 0; // Track the last event where dialog was shown
 
   @override
   void initState() {
@@ -203,10 +202,13 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
 
       // Increment drowsy events counter
       _drowsyEvents++;
+      print('[DMS] Drowsy event #$_drowsyEvents detected');
 
-      // Show assistant dialog after 2 drowsy events
-      if (_drowsyEvents >= 2 && !_assistantDialogShown) {
+      // Show assistant dialog at event 2 and every subsequent event (2, 3, 4, 5...)
+      if (_drowsyEvents >= 2 && _drowsyEvents > _lastDialogEvent) {
+        print('[DMS] Showing assistant dialog for event #$_drowsyEvents');
         _showAssistantBottomSheet();
+        _lastDialogEvent = _drowsyEvents; // Mark this event as handled
       }
     } else if (status == 'YAWNING') {
       _voiceAlertService.alertYawning();
@@ -220,10 +222,6 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
   }
 
   void _showAssistantBottomSheet() {
-    setState(() {
-      _assistantDialogShown = true;
-    });
-
     // Stop beeping while assistant is talking
     _voiceAlertService.stopBeep();
 
@@ -231,16 +229,18 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      isDismissible: false, // Prevent dismissing by tapping outside
+      enableDrag: false, // Prevent dismissing by dragging
       builder: (context) => AssistantDialog(
         drowsyEvents: _drowsyEvents,
         onDialogClosed: (responded) {
-          setState(() {
-            _assistantDialogShown = false;
-            // Reset drowsy events counter if driver responded
-            if (responded) {
+          // Reset drowsy events counter if driver responded
+          if (responded) {
+            setState(() {
               _drowsyEvents = 0;
-            }
-          });
+              _lastDialogEvent = 0;
+            });
+          }
         },
       ),
     );
@@ -273,6 +273,9 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     if (!_isMonitoring) {
       _pulseController.stop();
       _pulseController.reset();
+      // Reset counters when monitoring stops
+      _drowsyEvents = 0;
+      _lastDialogEvent = 0;
     }
   }
 
@@ -284,6 +287,9 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     setState(() {
       _detectionResult = null;
       _metrics = null;
+      _drowsyEvents = 0;
+      _lastDialogEvent = 0;
+      _localDrowsyFrames = 0;
     });
   }
 
@@ -523,13 +529,36 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Status Information',
-            style: TextStyle(
-              color: _isDarkMode ? Colors.white : Colors.black87,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Status Information',
+                style: TextStyle(
+                  color: _isDarkMode ? Colors.white : Colors.black87,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              // Show drowsy events counter
+              if (_drowsyEvents > 0)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _drowsyEvents >= 3 ? Colors.red : Colors.orange,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'Events: $_drowsyEvents',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
           _buildStatusRow(

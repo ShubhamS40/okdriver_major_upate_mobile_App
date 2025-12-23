@@ -9,6 +9,7 @@
         <domain includeSubdomains="true">10.0.2.2</domain>
         <domain includeSubdomains="true">13.60.91.147</domain>
         <domain includeSubdomains="true">98.70.99.58</domain>
+        <domain includeSubdomains="true">20.204.177.196</domain>
 
         <!-- PayU cleartext domains used in return callbacks -->
         <domain includeSubdomains="true">payu.in</domain>

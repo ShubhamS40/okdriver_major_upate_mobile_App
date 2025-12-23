@@ -62,6 +62,9 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }
+
+    // Always refresh subscription info so premium gating reflects latest status
+    await sessionService.fetchActiveSubscription();
   }
 
   void _toggleTheme() {

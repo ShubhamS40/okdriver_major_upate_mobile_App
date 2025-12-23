@@ -38,5 +38,7 @@ router.post('/payment/verify', verifyCompanyAuth, verifyPayment);
 
 // PAYU return (surl/furl) posts here without auth
 router.post('/payment/payu-return', verifyPayment);
+// Some gateways may call back with GET; handle it as well
+router.get('/payment/payu-return', verifyPayment);
 
 module.exports = router;

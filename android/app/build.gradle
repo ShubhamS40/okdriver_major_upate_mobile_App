@@ -12,7 +12,7 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.okdriver.app"
+    namespace = "app.dash.okDriver"
     compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
@@ -26,10 +26,10 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.okdriver"
+        applicationId = "app.dash.okDriver"
         minSdk = 21
         targetSdk = 34
-        versionCode = 1
+        versionCode = 21
         versionName = "1.0"
     }
 

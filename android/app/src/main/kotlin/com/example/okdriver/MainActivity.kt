@@ -1,4 +1,4 @@
-package com.okdriver.app
+package app.dash.okDriver
 
 import android.Manifest
 import android.app.Notification

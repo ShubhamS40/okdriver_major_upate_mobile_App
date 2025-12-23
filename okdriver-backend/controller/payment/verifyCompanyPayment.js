@@ -4,11 +4,12 @@ const prisma = new PrismaClient();
 const dotenv = require('dotenv');
 dotenv.config();
 
-// PayU return handler (surl/furl)
+// PayU return handler (surl/furl) and authenticated verification
 const verifyPayment = async (req, res) => {
   try {
-    // PayU posts as application/x-www-form-urlencoded by default
-    const body = req.body || {};
+    // Support both POST (form/json) and GET (query) returns
+    const isGet = req.method === 'GET';
+    const body = isGet ? (req.query || {}) : (req.body || {});
     const key = process.env.PAYU_KEY;
     const salt = process.env.PAYU_SALT;
 
@@ -34,10 +35,18 @@ const verifyPayment = async (req, res) => {
 
     const allowBypass = process.env.NODE_ENV !== 'production' && process.env.PAYU_SKIP_VERIFY === 'true';
     if (expectedHash !== hash && !allowBypass) {
+      const websiteBase = process.env.WEBSITE_BASE_URL || 'https://okdriver.in';
+      const failureUrl = `${websiteBase}/company/payment-failed?error=${encodeURIComponent('Invalid PayU hash')}&txnid=${encodeURIComponent(txnid || '')}`;
+      const isReturnPath = (req.originalUrl || '').includes('/payu-return');
+      if (isReturnPath) return res.redirect(302, failureUrl);
       return res.status(400).json({ success: false, message: 'Invalid PayU hash' });
     }
 
     if (status !== 'success') {
+      const websiteBase = process.env.WEBSITE_BASE_URL || 'https://okdriver.in';
+      const failureUrl = `${websiteBase}/company/payment-failed?status=${encodeURIComponent(status || 'failed')}&txnid=${encodeURIComponent(txnid || '')}`;
+      const isReturnPath = (req.originalUrl || '').includes('/payu-return');
+      if (isReturnPath) return res.redirect(302, failureUrl);
       return res.status(400).json({ success: false, message: 'Payment failed', status });
     }
 
@@ -72,9 +81,10 @@ const verifyPayment = async (req, res) => {
       data: { currentPlanId: numericPlanId, subscriptionExpiresAt: endDate }
     });
 
-    const website = process.env.WEBSITE_BASE_URL || 'http://localhost:3000';
-    const successUrl = `${website}/company/subscription-success?txnid=${encodeURIComponent(txnid)}&mihpayid=${encodeURIComponent(mihpayid||'')}`;
-    if (req.headers.accept && req.headers.accept.includes('text/html')) {
+    const website = process.env.WEBSITE_BASE_URL || 'https://okdriver.in';
+    const successUrl = `${website}/company/subscription-success?txnid=${encodeURIComponent(txnid || '')}&mihpayid=${encodeURIComponent(mihpayid||'')}`;
+    const isReturnPath = (req.originalUrl || '').includes('/payu-return');
+    if (isReturnPath) {
       return res.redirect(302, successUrl);
     }
     return res.json({ success: true, message: 'Payment & plan activated', txnid, mihpayid, redirect: successUrl });
