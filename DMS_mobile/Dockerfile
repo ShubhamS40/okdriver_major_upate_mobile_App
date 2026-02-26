@@ -17,10 +17,10 @@ RUN pip install --no-cache-dir -r requirement.txt
 # Ensure uvicorn is available (in case it's not in requirement.txt)
 RUN pip install --no-cache-dir uvicorn
 
-# Copy application code
+# Copy application code except app.py
 COPY . .
 
-EXPOSE 8000
+EXPOSE 8001
 
-# Start FastAPI app with uvicorn
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Start FastAPI app with uvicorn on port 8001
+CMD ["uvicorn", "index:app", "--host", "0.0.0.0", "--port", "8001"]

@@ -1,11 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
-import 'dart:convert';
-import 'dart:typed_data';
-import 'dart:math' as math;
+import 'dart:io';
 
 class CameraView extends StatefulWidget {
   final Function(String) onFrameCaptured;
@@ -26,120 +23,39 @@ class CameraView extends StatefulWidget {
 }
 
 class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
-  CameraController? _controller;
-  bool _isInitialized = false;
-  bool _isCapturing = false;
-  Timer? _captureTimer;
-  bool _isFront = true;
+  bool _isInitialized = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initializeCamera();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _captureTimer?.cancel();
-    _controller?.dispose();
+    // No controller to dispose in PlatformView preview
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_controller == null || !_controller!.value.isInitialized) {
-      return;
-    }
-    if (state == AppLifecycleState.inactive) {
-      _controller?.dispose();
-    } else if (state == AppLifecycleState.resumed) {
-      _initializeCamera();
-    }
+    // PlatformView preview is managed natively; lifecycle handled via MethodChannel in screen
   }
 
-  Future<void> _initializeCamera() async {
-    try {
-      final cameras = await availableCameras();
-      final frontCamera = cameras.firstWhere(
-        (camera) => camera.lensDirection == CameraLensDirection.front,
-        orElse: () => cameras.first,
-      );
-
-      _isFront = frontCamera.lensDirection == CameraLensDirection.front;
-
-      _controller = CameraController(
-        frontCamera,
-        ResolutionPreset.low,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.jpeg,
-      );
-
-      await _controller!.initialize();
-
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
-      }
-    } catch (e) {
-      print('Error initializing camera: $e');
-    }
-  }
-
-  void _startCapturing() {
-    if (!_isInitialized || _isCapturing) return;
-
-    _isCapturing = true;
-    _captureTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
-      final allow =
-          widget.shouldCapture == null ? true : widget.shouldCapture!();
-      if (widget.isMonitoring && _isCapturing && allow) {
-        _captureFrame();
-      } else {
-        if (!widget.isMonitoring || !_isCapturing) {
-          timer.cancel();
-          _isCapturing = false;
-        }
-      }
-    });
-  }
-
-  void _stopCapturing() {
-    _captureTimer?.cancel();
-    _isCapturing = false;
-  }
-
-  Future<void> _captureFrame() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-
-    try {
-      final image = await _controller!.takePicture();
-      final bytes = await image.readAsBytes();
-      final base64Image = base64Encode(bytes);
-      final dataUrl = 'data:image/jpeg;base64,$base64Image';
-
-      widget.onFrameCaptured(dataUrl);
-    } catch (e) {
-      print('Error capturing frame: $e');
-    }
-  }
+  void _startCapturing() {}
+  void _stopCapturing() {}
 
   @override
   void didUpdateWidget(CameraView oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (widget.isMonitoring && !oldWidget.isMonitoring) {
-      _startCapturing();
-    } else if (!widget.isMonitoring && oldWidget.isMonitoring) {
-      _stopCapturing();
-    }
+    // No-op: capturing handled natively
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized || _controller == null) {
+    if (!_isInitialized) {
       return Container(
         decoration: BoxDecoration(
           color: Colors.black,
@@ -168,38 +84,21 @@ class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
         borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
-            // FIXED: Camera preview that fills entire container
             Positioned.fill(
-              child: Transform(
-                alignment: Alignment.center,
-                transform: _isFront
-                    ? (Matrix4.identity()..rotateY(math.pi))
-                    : Matrix4.identity(),
-                child: AspectRatio(
-                  aspectRatio: _controller!.value.aspectRatio,
-                  child: OverflowBox(
-                    alignment: Alignment.center,
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      child: SizedBox(
-                        width: _controller!.value.previewSize?.height ?? 1,
-                        height: _controller!.value.previewSize?.width ?? 1,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            CameraPreview(_controller!),
-                            if (widget.detectionResult != null &&
-                                widget.detectionResult!['face_detected'] ==
-                                    true)
-                              _buildFaceOverlay(),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              child: Platform.isAndroid
+                  ? const AndroidView(
+                      viewType: 'dms_camera_preview_view',
+                      creationParamsCodec: StandardMessageCodec(),
+                    )
+                  : Container(color: Colors.black),
             ),
+
+            // Face Landmarks Overlay
+            if (widget.detectionResult != null &&
+                widget.detectionResult!['face_detected'] == true)
+              Positioned.fill(
+                child: _buildFaceOverlay(),
+              ),
 
             // Status indicator
             Positioned(
@@ -335,7 +234,7 @@ class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
               alertLevel: widget.detectionResult!['alert_level'] ?? 0,
               sourceWidth: srcW,
               sourceHeight: srcH,
-              mirrorHorizontally: _isFront,
+              mirrorHorizontally: true,
             ),
           ),
         );

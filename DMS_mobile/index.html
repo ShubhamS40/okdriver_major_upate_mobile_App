@@ -5,67 +5,276 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Drowsiness Detection System</title>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        * {
             margin: 0;
-            padding: 20px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: black;
             color: white;
             min-height: 100vh;
+            overflow-x: hidden;
         }
-        
+
+        /* Animated Background Grid */
+        .bg-grid {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            opacity: 0.2;
+            background-image: 
+                linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        /* Cursor Glow Effect */
+        .cursor-glow {
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            transform: translate(-50%, -50%);
+            transition: opacity 300ms;
+        }
+
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
-            display: grid;
-            grid-template-columns: 1fr 350px;
-            gap: 25px;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
         }
-        
-        .video-section {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 25px;
-            border-radius: 20px;
-            backdrop-filter: blur(15px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        
-        .controls-section {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 25px;
-            border-radius: 20px;
-            backdrop-filter: blur(15px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            height: fit-content;
-        }
-        
+
+        /* Header */
         h1 {
             text-align: center;
-            margin-bottom: 40px;
-            text-shadow: 2px 2px 8px rgba(0,0,0,0.3);
-            font-size: 2.5rem;
-            background: linear-gradient(45deg, #fff, #e0e0e0);
+            font-size: 3.5rem;
+            font-weight: bold;
+            margin-bottom: 2rem;
+            background: linear-gradient(to right, white, #d1d5db, white);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: pulse 2s ease-in-out infinite;
         }
-        
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.8; }
+        }
+
+        /* Mode Toggle Buttons */
+        .mode-toggle {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .mode-btn {
+            backdrop-filter: blur(12px);
+            background: rgba(255,255,255,0.05);
+            border: 2px solid rgba(255,255,255,0.1);
+            color: white;
+            padding: 12px 30px;
+            border-radius: 9999px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 300ms;
+        }
+
+        .mode-btn:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.3);
+            transform: scale(1.05);
+        }
+
+        .mode-btn.active {
+            background: white;
+            color: black;
+            border-color: white;
+        }
+
+        /* Glass Card */
+        .glass-card {
+            backdrop-filter: blur(12px);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 1.5rem;
+            padding: 2rem;
+            transition: all 300ms;
+        }
+
+        .glass-card:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        /* Camera Permission Modal */
+        .camera-permission-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(20px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            animation: fadeIn 300ms;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .permission-card {
+            backdrop-filter: blur(20px);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 2rem;
+            padding: 3rem;
+            max-width: 500px;
+            text-align: center;
+            animation: slideUp 400ms;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .permission-icon {
+            font-size: 5rem;
+            margin-bottom: 1.5rem;
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* Main Grid Layout */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        /* Video Section */
+        .video-section {
+            position: relative;
+        }
+
         video {
             width: 100%;
+            border-radius: 1rem;
+            border: 2px solid rgba(255,255,255,0.2);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+
+        canvas {
+            display: none;
+        }
+
+        /* Upload Area */
+        .upload-area {
+            border: 2px dashed rgba(255,255,255,0.3);
+            border-radius: 1rem;
+            padding: 3rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 300ms;
+            margin-bottom: 1.5rem;
+        }
+
+        .upload-area:hover {
+            background: rgba(255,255,255,0.05);
+            border-color: rgba(255,255,255,0.5);
+            transform: scale(1.02);
+        }
+
+        .upload-area .icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+
+        #preview {
+            width: 100%;
             max-width: 640px;
-            border-radius: 15px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 1rem;
+            border: 2px solid rgba(255,255,255,0.2);
+            display: none;
         }
-        
+
+        /* Button Group */
+        .button-group {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 1.5rem;
+        }
+
+        button {
+            background: white;
+            color: black;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 9999px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 300ms;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(255,255,255,0.2);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        button.secondary {
+            background: rgba(255,255,255,0.05);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.2);
+        }
+
+        button.secondary:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: white;
+        }
+
+        /* Status Card */
         .status-card {
-            background: rgba(255, 255, 255, 0.2);
-            padding: 20px;
-            margin: 15px 0;
-            border-radius: 15px;
+            backdrop-filter: blur(12px);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
             border-left: 5px solid;
-            transition: all 0.3s ease;
+            transition: all 300ms;
         }
-        
+
         .status-alert { 
             border-left-color: #4ade80;
             box-shadow: 0 0 20px rgba(74, 222, 128, 0.2);
@@ -81,9 +290,8 @@
         .status-critical { 
             border-left-color: #dc2626; 
             animation: criticalPulse 1.5s ease-in-out infinite;
-            box-shadow: 0 0 30px rgba(220, 38, 38, 0.4);
         }
-        
+
         @keyframes criticalPulse {
             0%, 100% { 
                 transform: scale(1); 
@@ -94,264 +302,324 @@
                 box-shadow: 0 0 40px rgba(220, 38, 38, 0.6);
             }
         }
-        
-        .metrics {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-top: 20px;
-        }
-        
-        .metric {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 15px;
-            border-radius: 12px;
-            text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            transition: transform 0.2s;
-        }
-        
-        .metric:hover {
-            transform: translateY(-2px);
-            background: rgba(255, 255, 255, 0.15);
-        }
-        
-        .metric-label {
-            font-size: 12px;
-            opacity: 0.8;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .metric-value {
-            font-size: 20px;
-            font-weight: bold;
-            margin-top: 8px;
-            color: #fff;
-        }
-        
-        button {
-            background: linear-gradient(45deg, #667eea, #764ba2);
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            border-radius: 30px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: 600;
-            margin: 8px;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
-        
-        button:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-            background: linear-gradient(45deg, #5a67d8, #6b46c1);
-        }
-        
-        button:active {
-            transform: translateY(-1px);
-        }
-        
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
+
+        /* Connection Status */
         .connection-status {
             text-align: center;
-            padding: 15px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            font-weight: bold;
-            transition: all 0.3s ease;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+            transition: all 300ms;
+            backdrop-filter: blur(12px);
         }
-        
+
         .connected {
-            background: rgba(74, 222, 128, 0.2);
+            background: rgba(74, 222, 128, 0.1);
             color: #4ade80;
             border: 1px solid rgba(74, 222, 128, 0.3);
         }
-        
+
         .disconnected {
-            background: rgba(239, 68, 68, 0.2);
+            background: rgba(239, 68, 68, 0.1);
             color: #ef4444;
             border: 1px solid rgba(239, 68, 68, 0.3);
         }
-        
+
+        /* Metrics Grid */
+        .metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .metric {
+            backdrop-filter: blur(12px);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 1rem;
+            border-radius: 0.75rem;
+            text-align: center;
+            transition: all 300ms;
+        }
+
+        .metric:hover {
+            transform: translateY(-2px);
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.3);
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            opacity: 0.7;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-top: 0.5rem;
+        }
+
+        /* Settings Panel */
+        .settings-panel {
+            backdrop-filter: blur(12px);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 1rem;
+            border-radius: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .settings-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            opacity: 0.9;
+        }
+
+        .server-input {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            width: 100%;
+            margin-top: 0.5rem;
+            font-size: 0.85rem;
+        }
+
+        .server-input::placeholder {
+            color: rgba(255,255,255,0.5);
+        }
+
+        /* Log Container */
         .log {
             max-height: 250px;
             overflow-y: auto;
-            background: rgba(0, 0, 0, 0.4);
-            padding: 15px;
-            border-radius: 12px;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(12px);
+            padding: 1rem;
+            border-radius: 0.75rem;
             font-family: 'Courier New', monospace;
-            font-size: 11px;
-            margin-top: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 0.75rem;
+            margin-top: 1rem;
+            border: 1px solid rgba(255,255,255,0.1);
         }
-        
+
         .log-entry {
-            margin-bottom: 8px;
-            padding: 4px 0;
+            margin-bottom: 0.5rem;
+            padding: 0.25rem 0;
             border-bottom: 1px solid rgba(255,255,255,0.1);
             opacity: 0.9;
         }
-        
+
         .log-entry:last-child {
             border-bottom: none;
         }
-        
+
         .log-entry.alert {
             color: #fbbf24;
             font-weight: bold;
         }
-        
+
         .log-entry.critical {
             color: #ef4444;
             font-weight: bold;
-            text-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
         }
-        
-        .button-group {
-            text-align: center;
-            margin-top: 20px;
-        }
-        
-        .settings-panel {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 15px;
-            border-radius: 12px;
-            margin-top: 15px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        
-        .settings-title {
-            font-size: 14px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            opacity: 0.9;
-        }
-        
-        .setting-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-            font-size: 12px;
-        }
-        
-        .server-input {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 6px;
-            width: 100%;
-            margin-top: 5px;
-        }
-        
-        .server-input::placeholder {
-            color: rgba(255, 255, 255, 0.5);
-        }
-        
-        @media (max-width: 768px) {
-            .container {
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .main-grid {
                 grid-template-columns: 1fr;
-                gap: 20px;
             }
             
             h1 {
-                font-size: 2rem;
-            }
-            
-            .metrics {
-                grid-template-columns: 1fr;
+                font-size: 2.5rem;
             }
         }
-        
-        .pulse {
-            animation: pulse 2s infinite;
+
+        /* Hide scrollbar but keep functionality */
+        .log::-webkit-scrollbar {
+            width: 6px;
         }
-        
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7);
-            }
-            70% {
-                box-shadow: 0 0 0 10px rgba(74, 222, 128, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
-            }
+
+        .log::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.05);
+            border-radius: 3px;
+        }
+
+        .log::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+        }
+
+        .log::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.3);
         }
     </style>
 </head>
 <body>
-    <h1>🔍 Real-time Drowsiness Detection System</h1>
+    <!-- Animated Background -->
+    <div class="bg-grid"></div>
     
+    <!-- Cursor Glow -->
+    <div class="cursor-glow" id="cursorGlow"></div>
+
+    <!-- Camera Permission Modal -->
+    <div class="camera-permission-modal" id="cameraModal" style="display: none;">
+        <div class="permission-card">
+            <div class="permission-icon">📹</div>
+            <h2 style="font-size: 2rem; margin-bottom: 1rem;">Camera Permission Required</h2>
+            <p style="opacity: 0.8; margin-bottom: 2rem; line-height: 1.6;">
+                This application needs access to your camera to detect drowsiness in real-time. 
+                Please allow camera access when prompted.
+            </p>
+            <button id="allowCameraBtn" style="width: 100%;">
+                Allow Camera Access
+            </button>
+        </div>
+    </div>
+
     <div class="container">
-        <div class="video-section">
-            <video id="video" autoplay muted playsinline></video>
-            <canvas id="canvas" style="display: none;"></canvas>
-            <div class="button-group">
-                <button id="startBtn">🚀 Start Detection</button>
-                <button id="stopBtn" disabled>⏹️ Stop Detection</button>
+        <h1>🔍 Real-time Drowsiness Detection System</h1>
+        
+        <!-- Mode Toggle -->
+        <div class="mode-toggle">
+            <button class="mode-btn" id="modeUploadBtn">📤 Image Upload</button>
+            <button class="mode-btn active" id="modeRealtimeBtn">📹 Real-time Detection</button>
+        </div>
+
+        <!-- Image Upload Mode -->
+        <div id="uploadMode" style="display: none;">
+            <div class="main-grid">
+                <div class="glass-card video-section">
+                    <div class="upload-area" id="uploadArea">
+                        <div class="icon">📁</div>
+                        <p style="font-size: 1.1rem; margin-bottom: 0.5rem;">Click to upload or drag & drop an image</p>
+                        <p style="font-size: 0.85rem; opacity: 0.7;">Supports: JPG, PNG, WebP</p>
+                    </div>
+                    <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                    <img id="preview" alt="Preview">
+                </div>
+                
+                <div class="glass-card">
+                    <div id="uploadStatus" class="status-card status-alert">
+                        <div style="font-size: 1.25rem; font-weight: bold;">⏳ Status: WAITING</div>
+                        <div style="font-size: 0.9rem; margin-top: 0.5rem; opacity: 0.9;">Upload an image to analyze</div>
+                    </div>
+                    
+                    <div class="metrics">
+                        <div class="metric">
+                            <div class="metric-label">👁️ EAR</div>
+                            <div class="metric-value" id="uploadEar">-</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">👄 MAR</div>
+                            <div class="metric-value" id="uploadMar">-</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">🧠 CNN</div>
+                            <div class="metric-value" id="uploadCnn">-</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">🌲 RF Model</div>
+                            <div class="metric-value" id="uploadRf">-</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-        
-        <div class="controls-section">
-            <div id="connectionStatus" class="connection-status disconnected">
-                📡 Disconnected from Server
-            </div>
-            
-            <div id="statusCard" class="status-card status-alert">
-                <div style="font-size: 20px; font-weight: bold;">🟢 Status: WAITING</div>
-                <div style="font-size: 14px; margin-top: 8px; opacity: 0.9;">Click Start Detection to begin monitoring</div>
-            </div>
-            
-            <div class="metrics">
-                <div class="metric">
-                    <div class="metric-label">👁️ EAR</div>
-                    <div class="metric-value" id="earValue">0.000</div>
+
+        <!-- Real-time Detection Mode -->
+        <div id="realtimeMode">
+            <div class="main-grid">
+                <div class="glass-card video-section">
+                    <video id="video" autoplay muted playsinline></video>
+                    <canvas id="canvas"></canvas>
+                    <div class="button-group">
+                        <button id="startBtn">🚀 Start Detection</button>
+                        <button id="stopBtn" class="secondary" disabled>⏹️ Stop Detection</button>
+                    </div>
                 </div>
-                <div class="metric">
-                    <div class="metric-label">👄 MAR</div>
-                    <div class="metric-value" id="marValue">0.000</div>
+                
+                <div class="glass-card">
+                    <div id="connectionStatus" class="connection-status disconnected">
+                        📡 Disconnected from Server
+                    </div>
+                    
+                    <div id="statusCard" class="status-card status-alert">
+                        <div style="font-size: 1.25rem; font-weight: bold;">🟢 Status: WAITING</div>
+                        <div style="font-size: 0.9rem; margin-top: 0.5rem; opacity: 0.9;">Click Start Detection to begin monitoring</div>
+                    </div>
+                    
+                    <div class="metrics">
+                        <div class="metric">
+                            <div class="metric-label">👁️ EAR</div>
+                            <div class="metric-value" id="earValue">0.000</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">👄 MAR</div>
+                            <div class="metric-value" id="marValue">0.000</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">🧠 CNN</div>
+                            <div class="metric-value" id="cnnValue">0.00</div>
+                        </div>
+                        <div class="metric">
+                            <div class="metric-label">⚠️ Events</div>
+                            <div class="metric-value" id="eventsValue">0</div>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-panel">
+                        <div class="settings-title">🔧 Connection Settings</div>
+                        <label style="font-size: 0.75rem; opacity: 0.8;">WebSocket URL:</label>
+                        <input type="text" id="serverInput" class="server-input" 
+                               placeholder="wss://dms.okdriver.in/ws" 
+                               value="wss://dms.okdriver.in/ws">
+                        <div style="margin-top: 0.75rem;">
+                            <label style="font-size: 0.75rem; opacity: 0.8;">API Key:</label>
+                            <div style="font-size: 0.7rem; opacity: 0.7; word-break: break-all; margin-top: 0.25rem;" id="apiKeyDisplay">
+                                
+                            </div>
+                            <input type="hidden" id="apiKey" value="okd_ff35044b63af3a6be01b823620c21c4b7706e742e059c8498c108d7150e9c768">
+                        </div>
+                        <button id="reconnectBtn" class="secondary" style="margin-top: 0.75rem; width: 100%;">
+                            🔄 Reconnect
+                        </button>
+                    </div>
+                    
+                    <div class="log" id="logContainer">
+                        <div class="log-entry">🚀 System initialized and ready</div>
+                    </div>
                 </div>
-                <div class="metric">
-                    <div class="metric-label">🧠 CNN</div>
-                    <div class="metric-value" id="cnnValue">0.00</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">⚠️ Events</div>
-                    <div class="metric-value" id="eventsValue">0</div>
-                </div>
-            </div>
-            
-            <div class="settings-panel">
-                <div class="settings-title">🔧 Connection Settings</div>
-                <input type="text" id="serverInput" class="server-input" 
-                       placeholder="ws://localhost:8000/ws" 
-                       value="ws://localhost:8000/ws">
-                <button id="reconnectBtn" style="margin-top: 10px; width: 100%; font-size: 14px;">
-                    🔄 Reconnect
-                </button>
-            </div>
-            
-            <div class="log" id="logContainer">
-                <div class="log-entry">🚀 System initialized and ready</div>
             </div>
         </div>
     </div>
-    
+
     <script>
+        // Cursor glow effect
+        const cursorGlow = document.getElementById('cursorGlow');
+        document.addEventListener('mousemove', (e) => {
+            cursorGlow.style.left = e.clientX + 'px';
+            cursorGlow.style.top = e.clientY + 'px';
+        });
+
+        // API Key for WebSocket authentication
+        const API_KEY = document.getElementById('apiKey').value;
+        
         let video, canvas, ctx, ws, isDetecting = false;
         let detectionInterval;
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 5;
+        let isAuthenticated = false;
+        let alarmAudio = null;
+        let lastAlertLevel = 0;
+        let cameraStream = null;
+        let cameraPermissionGranted = false;
         
         const statusCard = document.getElementById('statusCard');
         const connectionStatus = document.getElementById('connectionStatus');
@@ -360,8 +628,9 @@
         const logContainer = document.getElementById('logContainer');
         const serverInput = document.getElementById('serverInput');
         const reconnectBtn = document.getElementById('reconnectBtn');
+        const cameraModal = document.getElementById('cameraModal');
+        const allowCameraBtn = document.getElementById('allowCameraBtn');
         
-        // Status emojis and colors
         const statusConfig = {
             'ALERT': { emoji: '🟢', color: 'status-alert' },
             'YAWNING': { emoji: '🟡', color: 'status-yawning' },
@@ -377,37 +646,143 @@
             logContainer.appendChild(entry);
             logContainer.scrollTop = logContainer.scrollHeight;
             
-            // Keep only last 50 entries
             while (logContainer.children.length > 50) {
                 logContainer.removeChild(logContainer.firstChild);
             }
         }
         
-        function getWebSocketUrl() {
-            const input = serverInput.value.trim();
-            if (input) return input;
-            
-            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            return `${protocol}//${location.host}/ws`;
+        // Check camera permission status
+        async function checkCameraPermission() {
+            try {
+                const result = await navigator.permissions.query({ name: 'camera' });
+                return result.state === 'granted';
+            } catch (error) {
+                // If permissions API not supported, return false
+                return false;
+            }
         }
+
+        // Show camera permission modal
+        function showCameraModal() {
+            cameraModal.style.display = 'flex';
+        }
+
+        // Hide camera permission modal
+        function hideCameraModal() {
+            cameraModal.style.display = 'none';
+        }
+
+        // Request camera permission
+        allowCameraBtn.addEventListener('click', async () => {
+            // Hide our modal before requesting permission
+            hideCameraModal();
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        width: { ideal: 640 }, 
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    },
+                    audio: false
+                });
+                
+                cameraStream = stream;
+                cameraPermissionGranted = true;
+                
+                video.srcObject = stream;
+                video.onloadedmetadata = function() {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    log('📷 Camera initialized successfully');
+                };
+                
+                connectWebSocket();
+            } catch (err) {
+                log('❌ Camera access denied: ' + err.message, 'alert');
+                
+                // Show a more user-friendly error message
+                const errorDiv = document.createElement('div');
+                errorDiv.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: rgba(239, 68, 68, 0.95);
+                    color: white;
+                    padding: 1rem 2rem;
+                    border-radius: 0.75rem;
+                    z-index: 10001;
+                    backdrop-filter: blur(12px);
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+                    animation: slideDown 0.3s ease;
+                `;
+                errorDiv.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                        <span style="font-size: 1.5rem;">⚠️</span>
+                        <div>
+                            <div style="font-weight: 600; margin-bottom: 0.25rem;">Camera Access Denied</div>
+                            <div style="font-size: 0.85rem; opacity: 0.9;">Please check your browser settings and allow camera access</div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(errorDiv);
+                
+                // Remove error message after 5 seconds
+                setTimeout(() => {
+                    errorDiv.style.animation = 'slideUp 0.3s ease';
+                    setTimeout(() => errorDiv.remove(), 300);
+                }, 5000);
+                
+                // Show our modal again
+                setTimeout(() => showCameraModal(), 500);
+            }
+        });
         
         function connectWebSocket() {
-            const wsUrl = getWebSocketUrl();
+            let wsUrl = serverInput.value.trim();
+            
+            if (!wsUrl) {
+                wsUrl = 'wss://dms.okdriver.in/ws';
+                serverInput.value = wsUrl;
+            }
+            
             log(`🔌 Connecting to ${wsUrl}...`);
+            
+            if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) {
+                if (wsUrl.startsWith('http://')) {
+                    wsUrl = wsUrl.replace('http://', 'ws://');
+                } else if (wsUrl.startsWith('https://')) {
+                    wsUrl = wsUrl.replace('https://', 'wss://');
+                } else {
+                    wsUrl = 'ws://' + wsUrl;
+                }
+            }
+            
+            try {
+                const urlObj = new URL(wsUrl);
+                urlObj.pathname = '/ws';
+                urlObj.searchParams.set('api_key', API_KEY);
+                wsUrl = urlObj.toString();
+            } catch (e) {
+                if (!wsUrl.endsWith('/ws')) {
+                    wsUrl = wsUrl.replace(/\/$/, '') + '/ws';
+                }
+                wsUrl += `?api_key=${encodeURIComponent(API_KEY)}`;
+            }
+            
+            log(`🔗 Full WebSocket URL: ${wsUrl.replace(API_KEY, 'YOUR_API_KEY')}`);
             
             try {
                 ws = new WebSocket(wsUrl);
                 
                 ws.onopen = function() {
                     connectionStatus.textContent = '📡 Connected to Server';
-                    connectionStatus.className = 'connection-status connected pulse';
+                    connectionStatus.className = 'connection-status connected';
                     reconnectAttempts = 0;
-                    log('✅ WebSocket connected successfully');
-                    
-                    // Remove pulse after 3 seconds
-                    setTimeout(() => {
-                        connectionStatus.classList.remove('pulse');
-                    }, 3000);
+                    isAuthenticated = true;
+                    log('✅ WebSocket connected and authenticated successfully');
                 };
                 
                 ws.onmessage = function(event) {
@@ -419,38 +794,70 @@
                         } else if (message.type === 'pong') {
                             log('🏓 Pong received');
                         }
-                    } catch (e) {
-                        log('❌ Failed to parse message: ' + e.message);
+                    } catch (error) {
+                        log('❌ Error parsing message: ' + error.message, 'alert');
                     }
+                };
+                
+                ws.onerror = function(error) {
+                    log('❌ WebSocket error occurred', 'alert');
+                    log('❌ Check if server is running on ' + wsUrl.split('?')[0], 'alert');
+                    log('❌ Verify API key is valid and active', 'alert');
+                    connectionStatus.textContent = '📡 Connection Error';
+                    connectionStatus.className = 'connection-status disconnected';
+                    isAuthenticated = false;
                 };
                 
                 ws.onclose = function(event) {
                     connectionStatus.textContent = '📡 Disconnected from Server';
                     connectionStatus.className = 'connection-status disconnected';
-                    log(`🔌 WebSocket disconnected (Code: ${event.code})`);
                     
-                    // Stop detection if active
+                    let reason = 'Connection closed';
+                    if (event.code === 4001) {
+                        reason = 'API key required';
+                        log('❌ Connection rejected: API key required', 'alert');
+                    } else if (event.code === 4003) {
+                        reason = 'Invalid or expired API key';
+                        log('❌ Connection rejected: ' + (event.reason || 'Invalid API key'), 'alert');
+                    } else if (event.code === 4002) {
+                        reason = 'No active subscription';
+                        log('❌ Connection rejected: ' + (event.reason || 'No active subscription'), 'alert');
+                    } else if (event.code === 4000) {
+                        reason = 'Authentication error';
+                        log('❌ Connection rejected: ' + (event.reason || 'Authentication error'), 'alert');
+                    } else {
+                        log(`🔌 WebSocket disconnected: ${reason} (code: ${event.code})`);
+                    }
+                    
+                    isAuthenticated = false;
+                    
                     if (isDetecting) {
                         stopDetection();
                     }
                     
-                    // Auto-reconnect with exponential backoff
-                    if (reconnectAttempts < maxReconnectAttempts) {
-                        const delay = Math.pow(2, reconnectAttempts) * 1000;
+                    if (event.code !== 1000 && 
+                        event.code !== 4000 && 
+                        event.code !== 4001 && 
+                        event.code !== 4002 && 
+                        event.code !== 4003 &&
+                        reconnectAttempts < maxReconnectAttempts) {
                         reconnectAttempts++;
-                        log(`🔄 Reconnecting in ${delay/1000}s (Attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
-                        setTimeout(connectWebSocket, delay);
-                    } else {
-                        log('❌ Max reconnection attempts reached. Click Reconnect to try again.');
+                        log(`🔄 Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`);
+                        setTimeout(() => {
+                            connectWebSocket();
+                        }, 3000);
+                    } else if (reconnectAttempts >= maxReconnectAttempts) {
+                        log('❌ Max reconnect attempts reached. Click Reconnect to try again.', 'alert');
+                    } else if (event.code === 4001 || event.code === 4002 || event.code === 4003) {
+                        log('💡 Tip: Check your API key and subscription status in the settings', 'alert');
                     }
                 };
                 
-                ws.onerror = function(error) {
-                    log('❌ WebSocket error occurred');
-                };
-                
             } catch (error) {
-                log('❌ Failed to create WebSocket connection: ' + error.message);
+                log('❌ Failed to create WebSocket connection: ' + error.message, 'alert');
+                connectionStatus.textContent = '📡 Connection Failed';
+                connectionStatus.className = 'connection-status disconnected';
+                isAuthenticated = false;
             }
         }
         
@@ -463,13 +870,12 @@
             if (!data.face_detected) {
                 statusCard.className = 'status-card status-alert';
                 statusCard.innerHTML = `
-                    <div style="font-size: 20px; font-weight: bold;">😶 No Face Detected</div>
-                    <div style="font-size: 14px; margin-top: 8px; opacity: 0.9;">Please position yourself in front of the camera</div>
+                    <div style="font-size: 1.25rem; font-weight: bold;">😶 No Face Detected</div>
+                    <div style="font-size: 0.9rem; margin-top: 0.5rem; opacity: 0.9;">Please position yourself in front of the camera</div>
                 `;
                 return;
             }
             
-            // Determine status configuration
             let statusType = 'ALERT';
             if (data.alert_level >= 4) statusType = 'CRITICAL';
             else if (data.alert_level >= 3) statusType = 'DROWSY';
@@ -477,26 +883,27 @@
             
             const config = statusConfig[statusType];
             
-            // Update status card
             statusCard.className = `status-card ${config.color}`;
             statusCard.innerHTML = `
-                <div style="font-size: 20px; font-weight: bold;">${config.emoji} Status: ${statusType}</div>
-                <div style="font-size: 14px; margin-top: 8px; opacity: 0.9;">${data.message}</div>
+                <div style="font-size: 1.25rem; font-weight: bold;">${config.emoji} Status: ${statusType}</div>
+                <div style="font-size: 0.9rem; margin-top: 0.5rem; opacity: 0.9;">${data.message}</div>
             `;
             
-            // Update metrics
             if (data.metrics) {
-                document.getElementById('earValue').textContent = data.metrics.ear;
-                document.getElementById('marValue').textContent = data.metrics.mar;
-                document.getElementById('cnnValue').textContent = data.metrics.cnn_confidence;
-                document.getElementById('eventsValue').textContent = data.metrics.drowsy_events;
+                document.getElementById('earValue').textContent = (data.metrics.ear || 0).toFixed(3);
+                document.getElementById('marValue').textContent = (data.metrics.mar || 0).toFixed(3);
+                document.getElementById('cnnValue').textContent = (data.metrics.cnn_confidence || 0).toFixed(2);
+                document.getElementById('eventsValue').textContent = data.metrics.drowsy_events || data.metrics.drowsy_frames || 0;
             }
             
-            // Log important events
             if (data.alert_level >= 4) {
                 log(`🚨 CRITICAL: ${data.message}`, 'critical');
+                playAlarm(data.alert_level);
             } else if (data.alert_level >= 3) {
                 log(`⚠️ ALERT: ${data.message}`, 'alert');
+                playAlarm(data.alert_level);
+            } else {
+                lastAlertLevel = 0;
             }
         }
         
@@ -504,6 +911,14 @@
             video = document.getElementById('video');
             canvas = document.getElementById('canvas');
             ctx = canvas.getContext('2d');
+            
+            // Check if camera permission is already granted
+            const hasPermission = await checkCameraPermission();
+            
+            if (!hasPermission) {
+                showCameraModal();
+                return false;
+            }
             
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
@@ -515,6 +930,8 @@
                     audio: false
                 });
                 
+                cameraStream = stream;
+                cameraPermissionGranted = true;
                 video.srcObject = stream;
                 video.onloadedmetadata = function() {
                     canvas.width = video.videoWidth;
@@ -525,7 +942,7 @@
                 return true;
             } catch (err) {
                 log('❌ Camera access denied: ' + err.message, 'alert');
-                alert('Please allow camera access to use this application. Check your browser permissions and refresh the page.');
+                showCameraModal();
                 return false;
             }
         }
@@ -538,8 +955,20 @@
         }
         
         function startDetection() {
+            if (!cameraPermissionGranted) {
+                alert('❌ Camera permission not granted. Please allow camera access first.');
+                showCameraModal();
+                return;
+            }
+
             if (!ws || ws.readyState !== WebSocket.OPEN) {
                 alert('❌ WebSocket not connected. Please wait for connection and try again.');
+                return;
+            }
+            
+            if (!isAuthenticated) {
+                alert('❌ Not authenticated. Please wait for API key authentication to complete.');
+                log('⚠️ Detection start blocked - waiting for authentication', 'alert');
                 return;
             }
             
@@ -553,9 +982,8 @@
             stopBtn.disabled = false;
             log('🚀 Detection started');
             
-            // Send frames at 5 FPS (200ms interval)
             detectionInterval = setInterval(() => {
-                if (isDetecting && ws.readyState === WebSocket.OPEN) {
+                if (isDetecting && ws.readyState === WebSocket.OPEN && isAuthenticated) {
                     const frameData = captureFrame();
                     if (frameData) {
                         ws.send(JSON.stringify({
@@ -579,8 +1007,8 @@
             
             statusCard.className = 'status-card status-alert';
             statusCard.innerHTML = `
-                <div style="font-size: 20px; font-weight: bold;">⏹️ Status: STOPPED</div>
-                <div style="font-size: 14px; margin-top: 8px; opacity: 0.9;">Detection has been stopped</div>
+                <div style="font-size: 1.25rem; font-weight: bold;">⏹️ Status: STOPPED</div>
+                <div style="font-size: 0.9rem; margin-top: 0.5rem; opacity: 0.9;">Detection has been stopped</div>
             `;
             
             log('⏹️ Detection stopped');
@@ -591,15 +1019,14 @@
                 ws.close();
             }
             reconnectAttempts = 0;
+            isAuthenticated = false;
             connectWebSocket();
         }
         
-        // Event listeners
         startBtn.addEventListener('click', startDetection);
         stopBtn.addEventListener('click', stopDetection);
         reconnectBtn.addEventListener('click', reconnectWebSocket);
         
-        // Handle visibility change (pause detection when tab is not active)
         document.addEventListener('visibilitychange', function() {
             if (document.hidden && isDetecting) {
                 log('⏸️ Tab hidden - pausing detection');
@@ -623,7 +1050,6 @@
             }
         });
         
-        // Keyboard shortcuts
         document.addEventListener('keydown', function(event) {
             if (event.code === 'Space' && !event.target.matches('input')) {
                 event.preventDefault();
@@ -635,26 +1061,257 @@
             }
         });
         
-        // Initialize application
+        function initAlarmAudio() {
+            try {
+                const possiblePaths = [
+                    'alarm.wav',
+                    './alarm.wav',
+                    '/static/alarm.wav',
+                    '/alarm.wav'
+                ];
+                
+                let audioLoaded = false;
+                for (const path of possiblePaths) {
+                    try {
+                        alarmAudio = new Audio(path);
+                        alarmAudio.volume = 0.8;
+                        alarmAudio.preload = 'auto';
+                        
+                        alarmAudio.addEventListener('canplaythrough', () => {
+                            audioLoaded = true;
+                            log('🔊 Alarm audio loaded successfully from: ' + path);
+                        });
+                        
+                        alarmAudio.addEventListener('error', (e) => {
+                            if (!audioLoaded && possiblePaths.indexOf(path) === possiblePaths.length - 1) {
+                                log('⚠️ Could not load alarm audio from any path. Make sure alarm.wav is in the same directory as index.html', 'alert');
+                            }
+                        });
+                        
+                        alarmAudio.load();
+                        break;
+                    } catch (e) {
+                        continue;
+                    }
+                }
+                
+                if (!alarmAudio) {
+                    log('⚠️ Could not initialize alarm audio. Please ensure alarm.wav exists.', 'alert');
+                }
+            } catch (error) {
+                log('⚠️ Could not load alarm audio: ' + error.message, 'alert');
+            }
+        }
+        
+        function playAlarm(alertLevel) {
+            if (!alarmAudio) {
+                initAlarmAudio();
+            }
+            
+            if (alertLevel >= 3 && alertLevel !== lastAlertLevel) {
+                try {
+                    if (alarmAudio) {
+                        alarmAudio.currentTime = 0;
+                        const playPromise = alarmAudio.play();
+                        
+                        if (playPromise !== undefined) {
+                            playPromise
+                                .then(() => {
+                                    log('🔊 Alarm sound triggered for alert level ' + alertLevel, 'alert');
+                                })
+                                .catch(error => {
+                                    log('⚠️ Could not play alarm (browser may require user interaction): ' + error.message, 'alert');
+                                    document.addEventListener('click', function playOnce() {
+                                        alarmAudio.play().catch(() => {});
+                                        document.removeEventListener('click', playOnce);
+                                    }, { once: true });
+                                });
+                        }
+                        lastAlertLevel = alertLevel;
+                    }
+                } catch (error) {
+                    log('⚠️ Error playing alarm: ' + error.message, 'alert');
+                }
+            }
+            
+            if (alertLevel < 3) {
+                lastAlertLevel = 0;
+            }
+        }
+        
+        // Image Upload Functionality
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const preview = document.getElementById('preview');
+        const uploadStatus = document.getElementById('uploadStatus');
+        const modeUploadBtn = document.getElementById('modeUploadBtn');
+        const modeRealtimeBtn = document.getElementById('modeRealtimeBtn');
+        const uploadMode = document.getElementById('uploadMode');
+        const realtimeMode = document.getElementById('realtimeMode');
+        
+        modeUploadBtn.addEventListener('click', () => {
+            uploadMode.style.display = 'block';
+            realtimeMode.style.display = 'none';
+            modeUploadBtn.classList.add('active');
+            modeRealtimeBtn.classList.remove('active');
+        });
+        
+        modeRealtimeBtn.addEventListener('click', () => {
+            uploadMode.style.display = 'none';
+            realtimeMode.style.display = 'block';
+            modeRealtimeBtn.classList.add('active');
+            modeUploadBtn.classList.remove('active');
+        });
+        
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.style.background = 'rgba(255,255,255,0.1)';
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.style.background = 'transparent';
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.style.background = 'transparent';
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+                handleImageUpload(file);
+            }
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleImageUpload(file);
+            }
+        });
+        
+        async function handleImageUpload(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+            
+            uploadStatus.className = 'status-card status-alert';
+            uploadStatus.innerHTML = `
+                <div style="font-size: 1.25rem; font-weight: bold;">⏳ Processing...</div>
+                <div style="font-size: 0.9rem; margin-top: 0.5rem; opacity: 0.9;">Analyzing image...</div>
+            `;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/api/detect-image', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${API_KEY}`,
+                        'x-api-key': API_KEY
+                    },
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({error: `HTTP ${response.status}: ${response.statusText}`}));
+                    throw new Error(errorData.error || errorData.detail?.message || 'Upload failed');
+                }
+                
+                const result = await response.json();
+                displayUploadResult(result);
+            } catch (error) {
+                console.error('Upload error:', error);
+                uploadStatus.className = 'status-card status-alert';
+                uploadStatus.innerHTML = `
+                    <div style="font-size: 1.25rem; font-weight: bold;">❌ Error</div>
+                    <div style="font-size: 0.9rem; margin-top: 0.5rem; opacity: 0.9;">${error.message || 'Failed to analyze image'}</div>
+                `;
+            }
+        }
+        
+        function displayUploadResult(data) {
+            if (!data.success) {
+                uploadStatus.className = 'status-card status-alert';
+                uploadStatus.innerHTML = `
+                    <div style="font-size: 1.25rem; font-weight: bold;">❌ Error</div>
+                    <div style="font-size: 0.9rem; margin-top: 0.5rem; opacity: 0.9;">${data.error || 'Failed to process image'}</div>
+                `;
+                return;
+            }
+            
+            if (!data.face_detected) {
+                uploadStatus.className = 'status-card status-alert';
+                uploadStatus.innerHTML = `
+                    <div style="font-size: 1.25rem; font-weight: bold;">😶 No Face Detected</div>
+                    <div style="font-size: 0.9rem; margin-top: 0.5rem; opacity: 0.9;">${data.message}</div>
+                `;
+                document.getElementById('uploadEar').textContent = '-';
+                document.getElementById('uploadMar').textContent = '-';
+                document.getElementById('uploadCnn').textContent = '-';
+                document.getElementById('uploadRf').textContent = '-';
+                return;
+            }
+            
+            let statusType = 'ALERT';
+            let statusClass = 'status-alert';
+            if (data.alert_level >= 4) {
+                statusType = 'CRITICAL';
+                statusClass = 'status-critical';
+            } else if (data.alert_level >= 3) {
+                statusType = 'DROWSY';
+                statusClass = 'status-drowsy';
+            } else if (data.alert_level >= 2) {
+                statusType = 'YAWNING';
+                statusClass = 'status-yawning';
+            }
+            
+            const statusEmoji = statusType === 'CRITICAL' ? '🚨' : statusType === 'DROWSY' ? '🔴' : statusType === 'YAWNING' ? '🟡' : '🟢';
+            
+            uploadStatus.className = `status-card ${statusClass}`;
+            uploadStatus.innerHTML = `
+                <div style="font-size: 1.25rem; font-weight: bold;">${statusEmoji} Status: ${statusType}</div>
+                <div style="font-size: 0.9rem; margin-top: 0.5rem; opacity: 0.9;">${data.message}</div>
+            `;
+            
+            if (data.metrics) {
+                document.getElementById('uploadEar').textContent = (data.metrics.ear || 0).toFixed(3);
+                document.getElementById('uploadMar').textContent = (data.metrics.mar || 0).toFixed(3);
+                document.getElementById('uploadCnn').textContent = data.metrics.cnn_prediction || data.metrics.cnn_confidence?.toFixed(2) || '-';
+                document.getElementById('uploadRf').textContent = data.metrics.rf_prediction || '-';
+            }
+            
+            if (data.alert_level >= 3) {
+                playAlarm(data.alert_level);
+            }
+        }
+        
         window.onload = async function() {
             log('🌟 Application starting...');
+            
+            initAlarmAudio();
+            
+            modeRealtimeBtn.click();
             
             const cameraReady = await initCamera();
             if (cameraReady) {
                 connectWebSocket();
                 log('✅ Application ready! Press Space to start/stop detection.');
             } else {
-                log('❌ Application failed to initialize due to camera access.');
+                log('⏳ Waiting for camera permission...');
             }
         };
         
-        // Cleanup on page unload
         window.onbeforeunload = function() {
-            if (ws) {
-                ws.close();
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close(1000, 'Page closing');
             }
-            if (video && video.srcObject) {
-                video.srcObject.getTracks().forEach(track => track.stop());
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
             }
         };
     </script>

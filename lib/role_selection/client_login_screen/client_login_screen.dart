@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:okdriver/bottom_navigation_bar/fleet_client_bottom_nav/fleet_client_bottom_nav.dart';
-import 'package:okdriver/home_screen/homescreen.dart';
-import 'package:okdriver/role_selection/client_login_screen/client_otp_screem.dart';
 import 'package:okdriver/role_selection/client_login_screen/component/client_login_form.dart';
 import 'package:okdriver/role_selection/client_login_screen/component/clinet_login_header.dart';
 import 'dart:convert';
@@ -60,6 +58,128 @@ class _ClientLoginScreenState extends State<ClientLoginScreen>
     super.dispose();
   }
 
+  // Handle bypass OTP - directly verify and login
+  Future<void> _handleBypassOTP(String email) async {
+    try {
+      print('Handling bypass OTP for email: $email');
+
+      // Call verify OTP with dummy code (backend will bypass verification)
+      final resp = await http
+          .post(
+            Uri.parse(ApiConfig.clientOtpVerifyUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'email': email.trim(),
+              'code':
+                  '000000', // Dummy code - backend will bypass for this email
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      if (!mounted) return;
+
+      if (resp.statusCode == 200) {
+        final responseData = jsonDecode(resp.body);
+        print('🔍 Bypass verify response: $responseData');
+
+        // Check if we have a token (successful verification)
+        final token = responseData['token'] ?? responseData['accessToken'];
+
+        if (token != null) {
+          // Extract user data from response
+          final userData = responseData['client'] ??
+              responseData['user'] ??
+              {
+                'email': email.trim(),
+                'firstName': responseData['firstName'] ?? '',
+                'lastName': responseData['lastName'] ?? '',
+              };
+
+          print('🔑 Token found: ${token.substring(0, 10)}...');
+          print('👤 User data: $userData');
+
+          // Store additional company information
+          final prefs = await SharedPreferences.getInstance();
+          if (userData['id'] != null) {
+            await prefs.setInt('client_id', userData['id']);
+          }
+          if (userData['companyId'] != null) {
+            await prefs.setInt('company_id', userData['companyId']);
+          }
+          if (userData['email'] != null) {
+            await prefs.setString('client_email', userData['email']);
+          }
+
+          // Store company name (you might need to fetch this from backend)
+          await prefs.setString('company_name', 'Company');
+          await prefs.setString('company_email', 'company@fleet.com');
+
+          // Store authentication data
+          final loginSuccess = await ClientSessionService.instance.login(
+            userData,
+            token,
+            DateTime.now()
+                .millisecondsSinceEpoch
+                .toString(), // Generate session ID
+          );
+
+          if (loginSuccess && mounted) {
+            print('✅ Bypass login successful, navigating to dashboard...');
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Login successful! Redirecting...'),
+                backgroundColor: Colors.green,
+              ),
+            );
+
+            // Navigate to client dashboard
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (mounted) {
+                Navigator.of(context).pushReplacement(
+                  PageRouteBuilder(
+                    pageBuilder: (context, animation, secondaryAnimation) =>
+                        FleetClientBottomNavScreen(),
+                    transitionsBuilder:
+                        (context, animation, secondaryAnimation, child) {
+                      const begin = Offset(1.0, 0.0);
+                      const end = Offset.zero;
+                      const curve = Curves.easeInOut;
+                      var tween = Tween(begin: begin, end: end)
+                          .chain(CurveTween(curve: curve));
+                      var offsetAnimation = animation.drive(tween);
+                      return SlideTransition(
+                          position: offsetAnimation, child: child);
+                    },
+                  ),
+                );
+              }
+            });
+          } else {
+            throw Exception('Failed to store authentication data');
+          }
+        } else {
+          throw Exception('No token received from server');
+        }
+      } else {
+        String msg = 'Failed to verify';
+        try {
+          final m = jsonDecode(resp.body);
+          if (m['message'] is String) msg = m['message'];
+        } catch (_) {}
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(msg)));
+        }
+      }
+    } catch (e) {
+      print('Bypass OTP error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Network error: $e')));
+      }
+    }
+  }
+
   Future<void> _sendOTP() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
@@ -78,16 +198,27 @@ class _ClientLoginScreenState extends State<ClientLoginScreen>
         if (!mounted) return;
 
         if (resp.statusCode == 200) {
-          setState(() {
-            _otpSent = true;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('OTP sent to ${_emailController.text}'),
-              backgroundColor: Colors.green,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+          final responseData = jsonDecode(resp.body);
+
+          // Check if OTP was bypassed
+          if (responseData['status'] == 'bypassed') {
+            print('OTP bypassed for email: ${_emailController.text}');
+
+            // Directly handle bypass - verify and login
+            await _handleBypassOTP(_emailController.text.trim());
+          } else {
+            // Normal OTP flow - show OTP input
+            setState(() {
+              _otpSent = true;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('OTP sent to ${_emailController.text}'),
+                backgroundColor: Colors.green,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         } else {
           String msg = 'Failed to send OTP';
           try {

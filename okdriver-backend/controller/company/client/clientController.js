@@ -48,6 +48,13 @@ const clientLogin = async (req, res) => {
 
 module.exports = { clientLogin };
 
+// Bypass OTP for specific email
+const BYPASS_CLIENT_EMAIL = 'demo.okdriver@gmail.com';
+
+const shouldBypassClientOTP = (email) => {
+  return email && email.toLowerCase().trim() === BYPASS_CLIENT_EMAIL.toLowerCase();
+};
+
 /**
  * Send OTP to client email only if they have at least one vehicle access
  */
@@ -69,6 +76,15 @@ const sendClientOtp = async (req, res) => {
     console.log('🔗 access count:', accessCount);
     if (accessCount === 0) {
       return res.status(403).json({ message: 'Access denied: no vehicles assigned' });
+    }
+
+    // Bypass OTP sending for specific email
+    if (shouldBypassClientOTP(email)) {
+      console.log('✅ OTP bypassed for email:', email);
+      return res.status(200).json({ 
+        status: 'bypassed',
+        message: 'OTP bypassed for this email' 
+      });
     }
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -119,8 +135,8 @@ const sendClientOtp = async (req, res) => {
 const verifyClientOtp = async (req, res) => {
   try {
     const { email, code } = req.body;
-    if (!email || !code) {
-      return res.status(400).json({ message: 'Email and code are required' });
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
     }
 
     const client = await prisma.client.findUnique({ where: { email } });
@@ -128,24 +144,35 @@ const verifyClientOtp = async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const otp = await prisma.oTP.findFirst({
-      where: { phone: email, code },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!otp) {
-      return res.status(400).json({ message: 'Invalid code' });
-    }
-    if (otp.expiresAt < new Date()) {
-      return res.status(400).json({ message: 'Code expired' });
+    // Bypass OTP verification for specific email
+    if (shouldBypassClientOTP(email)) {
+      console.log('✅ OTP verification bypassed for email:', email);
+      // Skip OTP verification and proceed directly
+    } else {
+      // Normal OTP verification flow
+      if (!code) {
+        return res.status(400).json({ message: 'Code is required' });
+      }
+
+      const otp = await prisma.oTP.findFirst({
+        where: { phone: email, code },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (!otp) {
+        return res.status(400).json({ message: 'Invalid code' });
+      }
+      if (otp.expiresAt < new Date()) {
+        return res.status(400).json({ message: 'Code expired' });
+      }
+
+      // Clean up OTPs for this email (only for normal flow)
+      await prisma.oTP.deleteMany({ where: { phone: email } });
     }
 
     const accessCount = await prisma.clientVehicleAccess.count({ where: { clientId: client.id } });
     if (accessCount === 0) {
       return res.status(403).json({ message: 'Access denied: no vehicles assigned' });
     }
-
-    // Optional: clean up OTPs for this email
-    await prisma.oTP.deleteMany({ where: { phone: email } });
 
     // Issue a token with client and company information
     const token = jwt.sign({ 

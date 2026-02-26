@@ -206,8 +206,6 @@ class _CameraSelectionScreenState extends State<CameraSelectionScreen> {
       MaterialPageRoute(
         builder: (context) => DashcamScreen(
           cameraType: cameraType,
-          frontCamera: frontCamera,
-          backCamera: backCamera,
         ),
       ),
     );

@@ -15,6 +15,25 @@ const generateToken = () => {
   return crypto.randomBytes(32).toString('hex');
 };
 
+// Bypass OTP for specific phone numbers
+const BYPASS_OTP_NUMBERS = [
+  '+917303298030',
+  '+919953392911',
+  '+919319500121',
+  '917303298030',
+  '919953392911',
+  '919319500121',
+  '7303298030',
+  '9953392911',
+  '9319500121'
+];
+
+const shouldBypassOTP = (phone) => {
+  // Normalize phone number (remove spaces, dashes, etc.)
+  const normalizedPhone = phone.replace(/[\s-]/g, '');
+  return BYPASS_OTP_NUMBERS.includes(normalizedPhone);
+};
+
 
 // 📤 Send OTP
 exports.sendOTP = async (req, res) => {
@@ -23,6 +42,14 @@ exports.sendOTP = async (req, res) => {
 
     if (!phone || !phone.startsWith('+')) {
       return res.status(400).json({ error: "Phone number must include country code with '+' (e.g., +91XXXXXXXXXX)" });
+    }
+
+    // Bypass OTP sending for specific numbers
+    if (shouldBypassOTP(phone)) {
+      return res.status(200).json({
+        status: 'bypassed',
+        message: 'OTP bypassed for this number',
+      });
     }
 
     const verification = await client.verify.v2
@@ -51,17 +78,21 @@ exports.verifyOTP = async (req, res) => {
   }
 
   try {
-    // 1. Verify OTP with Twilio
-    const verificationCheck = await client.verify
-      .v2.services(process.env.TWILIO_VERIFY_SERVICE_SID)
-      .verificationChecks.create({
-        to: phone,
-        code,
-      });
+    // 1. Verify OTP with Twilio (skip for bypass numbers)
+    if (!shouldBypassOTP(phone)) {
+      // Normal OTP verification
+      const verificationCheck = await client.verify
+        .v2.services(process.env.TWILIO_VERIFY_SERVICE_SID)
+        .verificationChecks.create({
+          to: phone,
+          code,
+        });
 
-    if (verificationCheck.status !== 'approved') {
-      return res.status(400).json({ error: 'Invalid OTP' });
+      if (verificationCheck.status !== 'approved') {
+        return res.status(400).json({ error: 'Invalid OTP' });
+      }
     }
+    // If bypass number, skip OTP verification and proceed directly
 
     // 2. Check if user already exists
     const existingDriver = await prisma.driver.findUnique({
@@ -76,16 +107,17 @@ exports.verifyOTP = async (req, res) => {
       driver = existingDriver;
     } else {
       // 🆕 New user, save phone with blank values
-      driver = await prisma.driver.create({
-        data: {
-          phone: phone,
-          firstName: '',
-          lastName: '',
-          email: '',
-          latitude: 0.0,
-          longitude: 0.0,
-        }
-      });
+     driver = await prisma.driver.create({
+  data: {
+    phone: phone,
+    firstName: null,
+    lastName: null,
+    email: null,   // ✅ FIX
+    latitude: 0.0,
+    longitude: 0.0,
+  }
+});
+
       isNewUser = true;
     }
 

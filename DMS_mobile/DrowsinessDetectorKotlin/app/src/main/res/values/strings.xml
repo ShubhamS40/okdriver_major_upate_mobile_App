@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DashCam - Drowsiness Detection</string>
+    <string name="start_detection">Start Detection</string>
+    <string name="stop_detection">Stop Detection</string>
+    <string name="reset">Reset</string>
+    <string name="status_alert">ALERT</string>
+    <string name="status_drowsy">DROWSY</string>
+    <string name="status_yawning">YAWNING</string>
+    <string name="no_face_detected">No Face Detected</string>
+</resources>
+

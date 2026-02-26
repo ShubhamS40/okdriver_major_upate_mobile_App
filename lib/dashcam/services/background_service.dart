@@ -1,10 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/services.dart';
 import 'package:okdriver/utlis/android14_storage_helper.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
 // import 'package:okdriver/utils/android14_storage_helper.dart';
 
 class DashcamBackgroundService {
@@ -108,9 +108,15 @@ class DashcamBackgroundService {
 
     try {
       // Start the native Android camera service
-      final videoPath = await _channel.invokeMethod('startBackgroundRecording');
-      print('Native background recording started, path: $videoPath');
-      _currentVideoPath = videoPath;
+      final result = await _channel.invokeMethod('startBackgroundRecording');
+      String? startedPath;
+      if (result is Map && result['success'] == true) {
+        startedPath = result['filePath'] as String?;
+      } else if (result is String) {
+        startedPath = result;
+      }
+      print('Native background recording start result: $result');
+      _currentVideoPath = startedPath;
 
       // Start the background service
       final service = FlutterBackgroundService();
@@ -132,11 +138,26 @@ class DashcamBackgroundService {
   // Save video to gallery
   Future<bool> saveVideoToGallery(String videoPath) async {
     try {
-      final result = await ImageGallerySaver.saveFile(videoPath);
-      print('Video saved to gallery: $result');
+      final hasPerm =
+          await Android14StorageHelper.areStoragePermissionsGranted();
+      if (!hasPerm) {
+        await Android14StorageHelper.requestStoragePermissions();
+      }
+      final baseDir = await Android14StorageHelper.getAppStorageDirectory();
+      if (baseDir == null) {
+        return false;
+      }
+      final dstDir = Directory('$baseDir/dashcam_videos');
+      if (!await dstDir.exists()) {
+        await dstDir.create(recursive: true);
+      }
+      final fileName = 'dashcam_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final destPath = '${dstDir.path}/$fileName';
+      await File(videoPath).copy(destPath);
+      print('Video saved to storage: $destPath');
       return true;
     } catch (e) {
-      print('Error saving video to gallery: $e');
+      print('Error saving video to storage: $e');
       return false;
     }
   }
@@ -269,21 +290,25 @@ class DashcamBackgroundService {
   // Save video to gallery
   Future<void> _saveVideoToGallery(String videoPath) async {
     try {
-      // Use the storage helper to get the appropriate directory
-      final storageDir = await Android14StorageHelper.getAppStorageDirectory();
-
-      final result = await ImageGallerySaver.saveFile(
-        videoPath,
-        name: 'dashcam_${DateTime.now().millisecondsSinceEpoch}.mp4',
-      );
-
-      if (result['isSuccess'] == true) {
-        print('Video saved to gallery successfully');
-      } else {
-        print('Failed to save video to gallery: $result');
+      final hasPerm =
+          await Android14StorageHelper.areStoragePermissionsGranted();
+      if (!hasPerm) {
+        await Android14StorageHelper.requestStoragePermissions();
       }
+      final baseDir = await Android14StorageHelper.getAppStorageDirectory();
+      if (baseDir == null) {
+        return;
+      }
+      final dstDir = Directory('$baseDir/dashcam_videos');
+      if (!await dstDir.exists()) {
+        await dstDir.create(recursive: true);
+      }
+      final fileName = 'dashcam_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final destPath = '${dstDir.path}/$fileName';
+      await File(videoPath).copy(destPath);
+      print('Video saved to storage: $destPath');
     } catch (e) {
-      print('Error saving video to gallery: $e');
+      print('Error saving video to storage: $e');
       throw e;
     }
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:http/http.dart' as http;
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -23,74 +24,91 @@ class _AssistantDialogState extends State<AssistantDialog>
     with SingleTickerProviderStateMixin {
   late stt.SpeechToText _speech;
   bool _isListening = false;
+  bool _hasMicPermission = false; // ✅ Track mic permission
   String _text = "";
-  String _assistantResponse = "";
-  FlutterTts _flutterTts = FlutterTts();
+  String _assistantResponse = "Driver, are you alright? Please respond.";
+  final FlutterTts _flutterTts = FlutterTts();
 
-  // Animation controllers
   late AnimationController _animationController;
   late Animation<double> _pulseAnimation;
 
-  // State variables
   bool _hasResponded = false;
-  bool _initialPromptSpoken = false;
-  bool _conversationActive = true; // ✅ conversation loop control
+  bool _conversationActive = true;
 
   @override
   void initState() {
     super.initState();
     _speech = stt.SpeechToText();
 
-    // ✅ TTS complete hone ke baad auto listen
     _flutterTts.setCompletionHandler(() {
       if (mounted && _conversationActive) {
-        _listen();
+        _listen(); // Auto-listen after TTS
       }
     });
 
-    // Initialize animation controller
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
-
-    _pulseAnimation = Tween<double>(
-      begin: 1.0,
-      end: 1.2,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    ));
-
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
     _animationController.repeat(reverse: true);
 
-    // Speak initial prompt after a short delay
-    Future.delayed(const Duration(milliseconds: 500), () {
-      _speakInitialPrompt();
+    // ✅ Check mic permission then start listening
+    // The TTS "Driver are you alright?" was already spoken BEFORE dialog opened
+    // So dialog should immediately start listening
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) _checkMicAndListen();
     });
   }
 
   @override
   void dispose() {
+    _conversationActive = false;
     _animationController.dispose();
     _flutterTts.stop();
+    _speech.stop();
     super.dispose();
   }
 
-  void _speakInitialPrompt() async {
-    const initialPrompt = "Driver, are you alright? Please respond.";
-    await _speak(initialPrompt);
-    setState(() {
-      _assistantResponse = initialPrompt;
-      _initialPromptSpoken = true;
-    });
+  // ✅ Check mic permission first, then listen
+  Future<void> _checkMicAndListen() async {
+    // Check current permission status
+    var micStatus = await Permission.microphone.status;
+
+    if (micStatus.isGranted) {
+      _hasMicPermission = true;
+      _listen();
+    } else if (micStatus.isDenied) {
+      // Request it
+      micStatus = await Permission.microphone.request();
+      if (mounted) setState(() => _hasMicPermission = micStatus.isGranted);
+      if (micStatus.isGranted) {
+        _listen();
+      } else {
+        // Show message — user must tap buttons instead
+        if (mounted) {
+          setState(() {
+            _assistantResponse =
+                "Microphone not available. Please use the buttons below.";
+          });
+        }
+      }
+    } else if (micStatus.isPermanentlyDenied) {
+      if (mounted) {
+        setState(() {
+          _hasMicPermission = false;
+          _assistantResponse =
+              "Mic permission denied. Use buttons below or enable in Settings.";
+        });
+      }
+    }
   }
 
-  /// API call to your backend
   Future<String> _sendToModel(String query) async {
     try {
       final url = Uri.parse("http://20.204.177.196:5000/api/assistant/chat");
-
       final body = {
         "message": query,
         "userId": "1",
@@ -118,60 +136,60 @@ class _AssistantDialogState extends State<AssistantDialog>
   }
 
   void _listen() async {
-    if (!_isListening && _conversationActive) {
-      bool available = await _speech.initialize();
-      if (available) {
-        setState(() => _isListening = true);
-        _speech.listen(
-          onResult: (val) {
-            setState(() {
-              _text = val.recognizedWords;
-            });
-
-            // ✅ Jab user bolna khatam kare
-            if (val.finalResult) {
-              setState(() => _isListening = false);
-              _speech.stop();
-
-              if (_text.isNotEmpty) {
-                _processResponse(_text);
-              }
-            }
+    if (!_isListening && _conversationActive && mounted && _hasMicPermission) {
+      try {
+        bool available = await _speech.initialize(
+          onError: (error) {
+            debugPrint('[STT] Error: ${error.errorMsg}');
+            if (mounted) setState(() => _isListening = false);
           },
         );
+
+        if (available && mounted && _conversationActive) {
+          setState(() => _isListening = true);
+          _speech.listen(
+            onResult: (val) {
+              if (mounted) {
+                setState(() => _text = val.recognizedWords);
+              }
+              if (val.finalResult) {
+                if (mounted) setState(() => _isListening = false);
+                _speech.stop();
+                if (_text.isNotEmpty) _processResponse(_text);
+              }
+            },
+            listenFor: const Duration(seconds: 15),
+            pauseFor: const Duration(seconds: 3),
+          );
+        }
+      } catch (e) {
+        debugPrint('[STT] listen error: $e');
+        if (mounted) setState(() => _isListening = false);
       }
     }
   }
 
   Future<void> _processResponse(String text) async {
-    setState(() {
-      _hasResponded = true;
-    });
+    if (!mounted) return;
+    setState(() => _hasResponded = true);
 
     String response = await _sendToModel(text);
-    setState(() {
-      _assistantResponse = response;
-    });
+    if (mounted) setState(() => _assistantResponse = response);
     await _speak(response);
-
-    // ⚡ Ab TTS complete hone ke baad auto _listen() trigger hoga
+    // TTS completion handler auto-calls _listen() again
   }
 
   Future<void> _speak(String text) async {
-    await _flutterTts.stop(); // पहले का बोलना बंद करो
-
-    await _flutterTts.setLanguage("en-IN"); // Hinglish accent
+    await _flutterTts.stop();
+    await _flutterTts.setLanguage("en-IN");
     await _flutterTts.setPitch(1.0);
     await _flutterTts.setSpeechRate(0.65);
     await _flutterTts.setVolume(1.0);
-
     await _flutterTts.speak(text);
   }
 
   void _stopConversation() {
-    setState(() {
-      _conversationActive = false;
-    });
+    _conversationActive = false;
     _speech.stop();
     _flutterTts.stop();
     if (mounted) {
@@ -185,111 +203,169 @@ class _AssistantDialogState extends State<AssistantDialog>
     return Container(
       padding: const EdgeInsets.all(24),
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.5,
+        maxHeight: MediaQuery.of(context).size.height * 0.55,
       ),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.8),
+        color: Colors.black.withOpacity(0.92),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        border: Border.all(color: Colors.red.withOpacity(0.4), width: 1.5),
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Animated circle
+          // Handle bar
+          Container(
+            width: 40,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 20),
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Animated orb
           AnimatedBuilder(
             animation: _animationController,
             builder: (context, child) {
               return Transform.scale(
                 scale: _pulseAnimation.value,
                 child: Container(
-                  width: 120,
-                  height: 120,
+                  width: 100,
+                  height: 100,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                       colors: [
-                        Colors.blue.shade400,
-                        Colors.blue.shade700,
+                        _isListening
+                            ? Colors.green.shade300
+                            : Colors.red.shade400,
+                        _isListening
+                            ? Colors.green.shade700
+                            : Colors.red.shade800,
                       ],
-                      center: Alignment.center,
-                      radius: 0.8,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.blue.withOpacity(0.5),
-                        blurRadius: 20,
+                        color: (_isListening ? Colors.green : Colors.red)
+                            .withOpacity(0.5),
+                        blurRadius: 25,
                         spreadRadius: 5,
                       ),
                     ],
                   ),
                   child: Center(
-                    child: _buildAnimatedWaveform(),
+                    child: CustomPaint(
+                      size: const Size(70, 70),
+                      painter: WaveformPainter(
+                        isListening: _isListening,
+                        animationValue: _animationController.value,
+                      ),
+                    ),
                   ),
                 ),
               );
             },
           ),
 
-          const SizedBox(height: 30),
+          const SizedBox(height: 20),
 
-          // Text display (minimal, no chat history)
+          // Status text
           Text(
             _isListening
-                ? "Listening..."
-                : (_text.isNotEmpty
-                    ? "Processing..."
-                    : (_initialPromptSpoken ? "Tap to respond" : "")),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
+                ? "🎤 Listening..."
+                : (_hasMicPermission
+                    ? "Tap mic or use buttons"
+                    : "Use buttons below"),
+            style: TextStyle(
+              color: _isListening ? Colors.green : Colors.white60,
+              fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
 
-          // Response buttons
-          if (_initialPromptSpoken && !_hasResponded)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildResponseButton(
-                  "I'm fine",
-                  Colors.green,
-                  () => _handleQuickResponse("I'm fine"),
-                ),
-                const SizedBox(width: 16),
-                _buildResponseButton(
-                  "Need help",
-                  Colors.red,
-                  () => _handleQuickResponse("I need help"),
-                ),
-              ],
+          // Assistant response / recognized text
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.07),
+              borderRadius: BorderRadius.circular(12),
             ),
+            child: Text(
+              _text.isNotEmpty && !_hasResponded
+                  ? '"$_text"'
+                  : _assistantResponse,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 14, height: 1.4),
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // ✅ Stop Conversation button
-          ElevatedButton(
-            onPressed: _stopConversation,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+          // ✅ Mic button (if permission available) + quick response buttons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Mic button
+              if (_hasMicPermission)
+                GestureDetector(
+                  onTap: _isListening ? null : _listen,
+                  child: Container(
+                    width: 50,
+                    height: 50,
+                    margin: const EdgeInsets.only(right: 12),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _isListening
+                          ? Colors.green.withOpacity(0.3)
+                          : Colors.white.withOpacity(0.1),
+                      border: Border.all(
+                        color: _isListening ? Colors.green : Colors.white30,
+                      ),
+                    ),
+                    child: Icon(
+                      _isListening ? Icons.mic : Icons.mic_none,
+                      color: _isListening ? Colors.green : Colors.white70,
+                      size: 22,
+                    ),
+                  ),
+                ),
+
+              // Quick response buttons
+              if (!_hasResponded) ...[
+                _buildResponseButton("I'm fine", Colors.green,
+                    () => _handleQuickResponse("I'm fine")),
+                const SizedBox(width: 10),
+                _buildResponseButton("Need help", Colors.red,
+                    () => _handleQuickResponse("I need help")),
+              ],
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Stop button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _stopConversation,
+              icon: const Icon(Icons.check_circle_outline, size: 18),
+              label: const Text("I'm Awake — Close"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
-            child: const Text("Stop Conversation"),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildAnimatedWaveform() {
-    return CustomPaint(
-      size: const Size(80, 80),
-      painter: WaveformPainter(
-        isListening: _isListening,
-        animationValue: _animationController.value,
       ),
     );
   }
@@ -298,19 +374,15 @@ class _AssistantDialogState extends State<AssistantDialog>
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.2),
+          color: color.withOpacity(0.15),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: color, width: 1.5),
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        child: Text(text,
+            style: TextStyle(
+                color: color, fontWeight: FontWeight.bold, fontSize: 13)),
       ),
     );
   }
@@ -320,10 +392,8 @@ class _AssistantDialogState extends State<AssistantDialog>
       _text = response;
       _hasResponded = true;
     });
-
-    // Process the response
     await _processResponse(response);
-    _stopConversation(); // ✅ quick reply ke baad dialog close
+    _stopConversation();
   }
 }
 
@@ -331,84 +401,46 @@ class WaveformPainter extends CustomPainter {
   final bool isListening;
   final double animationValue;
 
-  WaveformPainter({
-    required this.isListening,
-    required this.animationValue,
-  });
+  WaveformPainter({required this.isListening, required this.animationValue});
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = math.min(size.width, size.height) / 2;
-
     final paint = Paint()
       ..color = Colors.white
-      ..strokeWidth = 3
+      ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
     if (isListening) {
-      _drawDynamicWaveform(canvas, center, radius, paint);
+      _drawDynamic(canvas, center, radius, paint);
     } else {
-      _drawStaticWaveform(canvas, center, radius, paint);
+      _drawStatic(canvas, center, radius, paint);
     }
   }
 
-  void _drawDynamicWaveform(
-      Canvas canvas, Offset center, double radius, Paint paint) {
+  void _drawDynamic(Canvas canvas, Offset center, double radius, Paint paint) {
     final path = Path();
-    final random = math.Random(animationValue.toInt() * 10000);
-
+    final random = math.Random((animationValue * 10000).toInt());
     const segments = 20;
-    const angleStep = 2 * math.pi / segments;
-
     for (int i = 0; i <= segments; i++) {
-      final angle = i * angleStep;
+      final angle = i * 2 * math.pi / segments;
       final variance = random.nextDouble() * 10 + 5;
-      final dynamicRadius = radius * (0.6 + (variance / 100));
-
-      final x = center.dx + dynamicRadius * math.cos(angle);
-      final y = center.dy + dynamicRadius * math.sin(angle);
-
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
+      final r = radius * (0.6 + variance / 100);
+      final x = center.dx + r * math.cos(angle);
+      final y = center.dy + r * math.sin(angle);
+      i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
     }
-
     path.close();
     canvas.drawPath(path, paint);
   }
 
-  void _drawStaticWaveform(
-      Canvas canvas, Offset center, double radius, Paint paint) {
-    final path = Path();
-
-    const segments = 20;
-    const angleStep = 2 * math.pi / segments;
-
-    for (int i = 0; i <= segments; i++) {
-      final angle = i * angleStep;
-      final staticRadius = radius * 0.7;
-
-      final x = center.dx + staticRadius * math.cos(angle);
-      final y = center.dy + staticRadius * math.sin(angle);
-
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-
-    path.close();
-    canvas.drawPath(path, paint);
+  void _drawStatic(Canvas canvas, Offset center, double radius, Paint paint) {
+    canvas.drawCircle(center, radius * 0.7, paint);
   }
 
   @override
-  bool shouldRepaint(WaveformPainter oldDelegate) {
-    return oldDelegate.isListening != isListening ||
-        oldDelegate.animationValue != animationValue;
-  }
+  bool shouldRepaint(WaveformPainter old) =>
+      old.isListening != isListening || old.animationValue != animationValue;
 }

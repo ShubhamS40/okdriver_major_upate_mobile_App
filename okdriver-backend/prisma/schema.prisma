@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,7 +7,462 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ---------- ENUMS ----------
+model Admin {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id            String                @id @default(uuid())
+  googleId      String?               @unique
+  email         String                @unique
+  name          String
+  picture       String?
+  emailVerified Boolean               @default(false)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  password      String?
+  apiKeys       UserApiKey[]
+  subscriptions UserApiSubscription[]
+
+  @@index([googleId])
+  @@index([email])
+}
+
+model UserApiKey {
+  id         String    @id @default(uuid())
+  userId     String
+  keyName    String
+  apiKey     String    @unique
+  isActive   Boolean   @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+  revoked    Boolean   @default(false)
+  userEmail  String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userEmail])
+  @@index([apiKey])
+  @@index([expiresAt])
+  @@index([revoked])
+}
+
+model Driver {
+  id               String               @id @default(uuid())
+  firstName        String?
+  lastName         String?
+  email            String?              
+  phone            String               @unique
+  latitude         Float                @default(0)
+  longitude        Float                @default(0)
+  emergencyContact String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  payments         DriverPayment[]
+  sessions         DriverSession[]
+  subscriptions    DriverSubscription[]
+}
+
+model DriverSession {
+  id           String   @id @default(uuid())
+  driverId     String
+  token        String   @unique
+  deviceInfo   String?
+  isActive     Boolean  @default(true)
+  lastActivity DateTime @default(now())
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  driver       Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  @@index([driverId, isActive])
+  @@index([token])
+  @@index([expiresAt])
+}
+
+model DriverPlan {
+  id             Int                  @id @default(autoincrement())
+  name           String
+  description    String?
+  price          Decimal              @db.Decimal(10, 2)
+  billingCycle   BillingCycle
+  durationDays   Int
+  benefits       String[]
+  features       String[]
+  storageLimitGB Int
+  isActive       Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  payments       DriverPayment[]
+  subscriptions  DriverSubscription[]
+  services       DriverService[]      @relation("DriverPlanServices")
+}
+
+model DriverService {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique
+  description String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  plans       DriverPlan[] @relation("DriverPlanServices")
+}
+
+model DriverSubscription {
+  id         Int                @id @default(autoincrement())
+  driverId   String
+  planId     Int
+  startAt    DateTime           @default(now())
+  endAt      DateTime
+  status     SubscriptionStatus @default(ACTIVE)
+  paymentRef String?
+  createdAt  DateTime           @default(now())
+  driver     Driver             @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  plan       DriverPlan         @relation(fields: [planId], references: [id])
+
+  @@index([driverId, status])
+  @@index([endAt])
+}
+
+model DriverPayment {
+  id        Int           @id @default(autoincrement())
+  driverId  String
+  planId    Int
+  amount    Decimal       @db.Decimal(10, 2)
+  status    PaymentStatus @default(PENDING)
+  txnId     String
+  mihpayid  String?
+  createdAt DateTime      @default(now())
+  driver    Driver        @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  plan      DriverPlan    @relation(fields: [planId], references: [id])
+
+  @@index([driverId, status])
+}
+
+model CompanyPlan {
+  id                     Int                   @id @default(autoincrement())
+  name                   String
+  description            String?
+  price                  Decimal               @db.Decimal(10, 2)
+  durationDays           Int?
+  billingCycle           String?
+  keyAdvantages          String[]
+  vehicleLimit           Int?
+  storageLimitGB         Int?
+  isActive               Boolean               @default(true)
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  clientLimit            Int?
+  planType               PlanType              @default(SUBSCRIPTION)
+  clientTopUps           ClientLimitTopUp[]
+  companiesUsingThisPlan Company[]             @relation("CurrentPlanRelation")
+  subscriptions          CompanySubscription[]
+  vehicleTopUps          VehicleLimitTopUp[]
+  features               CompanyFeature[]      @relation("CompanyPlanFeatures")
+  services               CompanyService[]      @relation("CompanyPlanServices")
+}
+
+model ApiPlan {
+  id            Int                   @id @default(autoincrement())
+  name          String
+  description   String?
+  price         Decimal               @db.Decimal(10, 2)
+  currency      String                @default("INR")
+  features      String[]
+  isActive      Boolean               @default(true)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  daysValidity  Int
+  subscriptions UserApiSubscription[]
+}
+
+model UserApiSubscription {
+  id            Int                @id @default(autoincrement())
+  userId        String
+  planId        Int
+  startAt       DateTime           @default(now())
+  endAt         DateTime
+  status        SubscriptionStatus @default(ACTIVE)
+  createdAt     DateTime           @default(now())
+  paymentAmount Decimal?           @db.Decimal(10, 2)
+  paymentRef    String?
+  paymentStatus PaymentStatus      @default(PENDING)
+  payuMihpayid  String?
+  plan          ApiPlan            @relation(fields: [planId], references: [id])
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([endAt])
+}
+
+model VehicleLimitTopUp {
+  id           Int         @id @default(autoincrement())
+  companyId    Int
+  planId       Int
+  vehicleCount Int
+  purchasedAt  DateTime    @default(now())
+  expiresAt    DateTime
+  status       TopUpStatus @default(ACTIVE)
+  paymentRef   String?
+  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan         CompanyPlan @relation(fields: [planId], references: [id])
+
+  @@index([companyId, status])
+  @@index([expiresAt])
+}
+
+model ClientLimitTopUp {
+  id          Int         @id @default(autoincrement())
+  companyId   Int
+  planId      Int
+  clientCount Int
+  purchasedAt DateTime    @default(now())
+  expiresAt   DateTime
+  status      TopUpStatus @default(ACTIVE)
+  paymentRef  String?
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan        CompanyPlan @relation(fields: [planId], references: [id])
+
+  @@index([companyId, status])
+  @@index([expiresAt])
+}
+
+model CompanyFeature {
+  id          Int           @id @default(autoincrement())
+  name        String        @unique
+  description String?
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  plans       CompanyPlan[] @relation("CompanyPlanFeatures")
+}
+
+model CompanyService {
+  id          Int           @id @default(autoincrement())
+  name        String        @unique
+  description String?
+  serviceType String?
+  color       String?
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  plans       CompanyPlan[] @relation("CompanyPlanServices")
+}
+
+model CompanySubscription {
+  id         Int                @id @default(autoincrement())
+  companyId  Int
+  planId     Int
+  startAt    DateTime           @default(now())
+  endAt      DateTime
+  status     SubscriptionStatus @default(ACTIVE)
+  paymentRef String?
+  createdAt  DateTime           @default(now())
+  company    Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan       CompanyPlan        @relation(fields: [planId], references: [id])
+
+  @@index([companyId, status])
+  @@index([endAt])
+}
+
+model Company {
+  id                     Int                   @id @default(autoincrement())
+  name                   String
+  email                  String                @unique
+  password               String
+  type                   CompanyType           @default(OTHER)
+  status                 CompanyStatus         @default(ACTIVE)
+  currentPlanId          Int?
+  subscriptionExpiresAt  DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  additionalClientLimit  Int                   @default(0)
+  additionalVehicleLimit Int                   @default(0)
+  resetToken             String?               @unique
+  resetTokenExpiry       DateTime?
+  sentMessages           ChatMessage[]         @relation("CompanySender")
+  clients                Client[]
+  clientChats            ClientChat[]
+  clientTopUps           ClientLimitTopUp[]
+  ClientList             ClientList[]
+  grants                 ClientVehicleAccess[]
+  currentPlan            CompanyPlan?          @relation("CurrentPlanRelation", fields: [currentPlanId], references: [id])
+  subscriptions          CompanySubscription[]
+  tickets                HelpSupportTicket[]
+  vehicles               Vehicle[]
+  vehicleChats           VehicleChat[]
+  vehicleTopUps          VehicleLimitTopUp[]
+
+  @@index([currentPlanId])
+}
+
+model Vehicle {
+  id             Int                   @id @default(autoincrement())
+  vehicleNumber  String                @unique
+  password       String
+  model          String?
+  status         VehicleStatus         @default(ACTIVE)
+  companyId      Int
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  type           String?
+  lastLat        Decimal?              @db.Decimal(10, 7)
+  lastLng        Decimal?              @db.Decimal(10, 7)
+  lastLocationAt DateTime?
+  chats          ChatMessage[]
+  accesses       ClientVehicleAccess[]
+  company        Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vehicleChats   VehicleChat[]
+  locations      VehicleLocation[]
+
+  @@index([companyId, status])
+  @@index([lastLocationAt])
+}
+
+model VehicleLocation {
+  id         Int      @id @default(autoincrement())
+  vehicleId  Int
+  lat        Decimal  @db.Decimal(10, 7)
+  lng        Decimal  @db.Decimal(10, 7)
+  speedKph   Decimal? @db.Decimal(6, 2)
+  headingDeg Int?
+  recordedAt DateTime @default(now())
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, recordedAt])
+}
+
+model Client {
+  id               Int                   @id @default(autoincrement())
+  companyId        Int
+  name             String?
+  email            String                @unique
+  createdAt        DateTime              @default(now())
+  sentMessages     ChatMessage[]         @relation("ClientSender")
+  company          Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  clientChats      ClientChat[]
+  ClientListMember ClientListMember[]
+  accesses         ClientVehicleAccess[]
+}
+
+model ClientVehicleAccess {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  clientId  Int
+  vehicleId Int
+  createdAt DateTime @default(now())
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, vehicleId])
+  @@index([companyId])
+}
+
+model ClientList {
+  id        Int                @id @default(autoincrement())
+  companyId Int
+  name      String
+  createdAt DateTime           @default(now())
+  company   Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  members   ClientListMember[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model ClientListMember {
+  id           Int        @id @default(autoincrement())
+  clientListId Int
+  clientId     Int
+  createdAt    DateTime   @default(now())
+  client       Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  list         ClientList @relation(fields: [clientListId], references: [id], onDelete: Cascade)
+
+  @@unique([clientListId, clientId])
+  @@index([clientId])
+}
+
+model ChatMessage {
+  id              Int        @id @default(autoincrement())
+  vehicleId       Int
+  senderType      SenderType
+  senderCompanyId Int?
+  senderClientId  Int?
+  message         String
+  createdAt       DateTime   @default(now())
+  senderClient    Client?    @relation("ClientSender", fields: [senderClientId], references: [id])
+  senderCompany   Company?   @relation("CompanySender", fields: [senderCompanyId], references: [id])
+  vehicle         Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, createdAt])
+  @@index([senderCompanyId])
+  @@index([senderClientId])
+}
+
+model VehicleChat {
+  id            Int        @id @default(autoincrement())
+  vehicleId     Int
+  companyId     Int
+  senderType    SenderType
+  message       String
+  attachmentUrl String?
+  isRead        Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  company       Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vehicle       Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([vehicleId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([isRead])
+}
+
+model ClientChat {
+  id            Int        @id @default(autoincrement())
+  clientId      Int
+  companyId     Int
+  senderType    SenderType
+  message       String
+  attachmentUrl String?
+  isRead        Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  client        Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  company       Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, createdAt])
+  @@index([companyId, createdAt])
+  @@index([isRead])
+}
+
+model HelpSupportTicket {
+  id            Int            @id @default(autoincrement())
+  companyId     Int
+  subject       String
+  description   String
+  priority      TicketPriority @default(MEDIUM)
+  status        TicketStatus   @default(OPEN)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  adminResponse String?
+  resolvedAt    DateTime?
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status])
+  @@index([createdAt])
+}
+
+model OTP {
+  id        String   @id @default(uuid())
+  phone     String
+  code      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([phone, code])
+  @@index([expiresAt])
+}
+
 enum CompanyType {
   FLEET_OPERATOR
   ENTERPRISE
@@ -36,7 +485,7 @@ enum VehicleStatus {
 
 enum SenderType {
   COMPANY
-  DRIVER      // i.e., the person using the vehicle credentials
+  DRIVER
   CLIENT
 }
 
@@ -72,9 +521,9 @@ enum BillingCycle {
 }
 
 enum PlanType {
-  SUBSCRIPTION     // Regular subscription plan
-  VEHICLE_LIMIT    // Top-up plan for additional vehicles
-  CLIENT_LIMIT     // Top-up plan for additional clients
+  SUBSCRIPTION
+  VEHICLE_LIMIT
+  CLIENT_LIMIT
 }
 
 enum TopUpStatus {
@@ -83,7 +532,6 @@ enum TopUpStatus {
   USED
 }
 
-// ---------- SUPPORT TICKETS ----------
 enum TicketPriority {
   LOW
   MEDIUM
@@ -94,532 +542,4 @@ enum TicketStatus {
   OPEN
   IN_PROGRESS
   CLOSED
-}
-
-// ---------- ADMIN ----------
-model Admin {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String   // hashed
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-// ---------- USER (Google Auth) ----------
-model User {
-  id            String   @id @default(uuid())
-  googleId      String?  @unique  // Optional for email/password users
-  email         String   @unique
-  password      String?  // Hashed password for email/password users
-  name          String
-  picture       String?
-  emailVerified Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  // Relations
-  apiKeys       UserApiKey[]
-  subscriptions UserApiSubscription[]
-  
-  @@index([googleId])
-  @@index([email])
-}
-
-// ---------- USER API KEYS ----------
-model UserApiKey {
-  id          String   @id @default(uuid())
-  userId      String
-  userEmail   String   // Store user email for easy access
-  keyName     String
-  apiKey      String   @unique
-  isActive    Boolean  @default(true)
-  revoked     Boolean  @default(false)  // New field for revoked status
-  lastUsedAt  DateTime?
-  createdAt   DateTime @default(now())
-  expiresAt   DateTime?
-  
-  // Relations
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@index([userId])
-  @@index([userEmail])
-  @@index([apiKey])
-  @@index([expiresAt])
-  @@index([revoked])
-}
-
-// ---------- INDIVIDUAL DRIVER SECTION ----------
-model Driver {
-  id                String   @id @default(uuid())
-  firstName         String
-  lastName          String
-  email             String   @unique
-  phone             String   @unique
-  latitude          Float
-  longitude         Float
-  emergencyContact  String?  // Optional field
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  // Relations
-  sessions          DriverSession[]
-  subscriptions     DriverSubscription[]
-  payments          DriverPayment[]
-}
-
-// Driver Session Management
-model DriverSession {
-  id          String   @id @default(uuid())
-  driverId    String
-  token       String   @unique
-  deviceInfo  String?  // Store device information
-  isActive    Boolean  @default(true)
-  lastActivity DateTime @default(now())
-  createdAt   DateTime @default(now())
-  expiresAt   DateTime
-  
-  // Relations
-  driver      Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  
-  @@index([driverId, isActive])
-  @@index([token])
-  @@index([expiresAt])
-}
-
-// ---------- INDIVIDUAL DRIVER SUBSCRIPTION PLANS ----------
-model DriverPlan {
-  id             Int           @id @default(autoincrement())
-  name           String
-  description    String?
-  price          Decimal       @db.Decimal(10,2)
-  billingCycle   BillingCycle  // Daily, Monthly, 3 Months, Yearly
-  durationDays   Int          // Plan duration in days
-  benefits       String[]      // Array of benefits (one per line)
-  features       String[]      // Array of features included
-  storageLimitGB Int           // Storage allocation in GB
-  isActive       Boolean       @default(true)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-
-  // Services included in the plan (drowsiness monitoring, voice assistant, etc.)
-  services       DriverService[] @relation("DriverPlanServices")
-  
-  // Subscriptions
-  subscriptions  DriverSubscription[]
-
-  // Backrelation for DriverPayment
-  payments       DriverPayment[]
-}
-
-model DriverService {
-  id          Int           @id @default(autoincrement())
-  name        String        @unique
-  description String?
-  isActive    Boolean       @default(true)
-  createdAt   DateTime      @default(now())
-  
-  plans       DriverPlan[]  @relation("DriverPlanServices")
-}
-
-model DriverSubscription {
-  id         Int                @id @default(autoincrement())
-  driverId   String
-  planId     Int
-  startAt    DateTime          @default(now())
-  endAt      DateTime
-  status     SubscriptionStatus @default(ACTIVE)
-  paymentRef String?           // Optional payment reference
-  createdAt  DateTime          @default(now())
-
-  driver     Driver           @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  plan       DriverPlan       @relation(fields: [planId], references: [id])
-
-  @@index([driverId, status])
-  @@index([endAt])
-}
-
-model DriverPayment {
-  id        Int           @id @default(autoincrement())
-  driverId  String
-  planId    Int
-  amount    Decimal       @db.Decimal(10,2)
-  status    PaymentStatus @default(PENDING)
-  txnId     String
-  mihpayid  String?
-  createdAt DateTime      @default(now())
-
-  driver    Driver        @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  plan      DriverPlan    @relation(fields: [planId], references: [id])
-
-  @@index([driverId, status])
-}
-
-// ---------- COMPANY SUBSCRIPTION PLANS ----------
-model CompanyPlan {
-  id             Int            @id @default(autoincrement())
-  name           String
-  description    String?
-  price          Decimal        @db.Decimal(10,2)
-  durationDays   Int?           // Nullable for top-up plans
-  billingCycle   String?        // Nullable for top-up plans
-  keyAdvantages  String[]
-  vehicleLimit   Int?           // For subscription plans
-  clientLimit    Int?           // For subscription plans  
-  storageLimitGB Int?           // Nullable for top-up plans
-  planType       PlanType       @default(SUBSCRIPTION)
-  isActive       Boolean        @default(true)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-
-  // Existing relations
-  features       CompanyFeature[] @relation("CompanyPlanFeatures")
-  services       CompanyService[] @relation("CompanyPlanServices")
-  subscriptions  CompanySubscription[]
-
-  // **NEW BACKRELATION**
-  companiesUsingThisPlan Company[] @relation("CurrentPlanRelation")
-  
-  // Top-up plan relations
-  vehicleTopUps  VehicleLimitTopUp[]
-  clientTopUps   ClientLimitTopUp[]
-}
-
-// ---------- API PLANS (for public API usage/pricing) ----------
-model ApiPlan {
-  id          Int       @id @default(autoincrement())
-  name        String
-  description String?
-  price       Decimal   @db.Decimal(10,2)
-  currency    String    @default("INR") // Default to Indian Rupees
-  features    String[]
-  isActive    Boolean   @default(true)
-  daysValidity Int      // Number of days plan is valid after purchase
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  // New relation
-  subscriptions UserApiSubscription[]
-}
-
-model UserApiSubscription {
-  id         Int      @id @default(autoincrement())
-  userId     String
-  planId     Int
-  startAt    DateTime @default(now())
-  endAt      DateTime
-  status     SubscriptionStatus @default(ACTIVE)
-  createdAt  DateTime @default(now())
-  
-  // PayU transaction fields
-  paymentRef String?   // PayU transaction ID
-  paymentStatus PaymentStatus @default(PENDING)
-  payuMihpayid String?  // PayU payment ID
-  paymentAmount Decimal? @db.Decimal(10,2)
-
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan       ApiPlan  @relation(fields: [planId], references: [id])
-
-  @@index([userId, status])
-  @@index([endAt])
-}
-
-// ---------- TOP-UP PLANS ----------
-model VehicleLimitTopUp {
-  id            Int         @id @default(autoincrement())
-  companyId     Int
-  planId        Int         // References the vehicle-limit plan
-  vehicleCount  Int         // Number of additional vehicles
-  purchasedAt   DateTime    @default(now())
-  expiresAt     DateTime    // Aligned with company's current subscription
-  status        TopUpStatus @default(ACTIVE)
-  paymentRef    String?
-  
-  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  plan          CompanyPlan @relation(fields: [planId], references: [id])
-  
-  @@index([companyId, status])
-  @@index([expiresAt])
-}
-
-model ClientLimitTopUp {
-  id           Int         @id @default(autoincrement())
-  companyId    Int
-  planId       Int         // References the client-limit plan
-  clientCount  Int         // Number of additional clients
-  purchasedAt  DateTime    @default(now())
-  expiresAt    DateTime    // Aligned with company's current subscription
-  status       TopUpStatus @default(ACTIVE)
-  paymentRef   String?
-  
-  company      Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  plan         CompanyPlan @relation(fields: [planId], references: [id])
-  
-  @@index([companyId, status])
-  @@index([expiresAt])
-}
-
-model CompanyFeature {
-  id          Int            @id @default(autoincrement())
-  name        String         @unique
-  description String?
-  isActive    Boolean        @default(true)
-  createdAt   DateTime       @default(now())
-  
-  plans       CompanyPlan[]  @relation("CompanyPlanFeatures")
-}
-
-model CompanyService {
-  id          Int            @id @default(autoincrement())
-  name        String         @unique
-  description String?
-  serviceType String?        // e.g., "drowsiness", "voice", "sos", "tracking", etc.
-  color       String?        // For UI display
-  isActive    Boolean        @default(true)
-  createdAt   DateTime       @default(now())
-  
-  plans       CompanyPlan[]  @relation("CompanyPlanServices")
-}
-
-model CompanySubscription {
-  id         Int                @id @default(autoincrement())
-  companyId  Int
-  planId     Int
-  startAt    DateTime          @default(now())
-  endAt      DateTime
-  status     SubscriptionStatus @default(ACTIVE)
-  paymentRef String?
-  createdAt  DateTime          @default(now())
-
-  company    Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  plan       CompanyPlan  @relation(fields: [planId], references: [id])
-
-  @@index([companyId, status])
-  @@index([endAt])
-}
-
-// ---------- COMPANY & FLEET OPERATIONS ----------
-model Company {
-  id                    Int           @id @default(autoincrement())
-  name                  String
-  email                 String        @unique
-  password              String
-  type                  CompanyType   @default(OTHER)
-  status                CompanyStatus @default(ACTIVE)
-
-  // Password Reset Fields - ADD THESE TWO LINES
-  resetToken            String?       @unique
-  resetTokenExpiry      DateTime?
-
-  currentPlanId         Int?
-  currentPlan           CompanyPlan?  @relation("CurrentPlanRelation", fields: [currentPlanId], references: [id])
-  subscriptionExpiresAt DateTime?
-  
-  // Additional limits from top-up plans
-  additionalVehicleLimit Int         @default(0)
-  additionalClientLimit  Int         @default(0)
-
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
-
-  vehicles              Vehicle[]
-  clients               Client[]
-  subscriptions         CompanySubscription[]
-  grants                ClientVehicleAccess[]
-  sentMessages          ChatMessage[] @relation("CompanySender")
-  vehicleChats          VehicleChat[]
-  clientChats           ClientChat[]
-  tickets               HelpSupportTicket[]
-  vehicleTopUps         VehicleLimitTopUp[]
-  clientTopUps          ClientLimitTopUp[]
-
-  @@index([currentPlanId])
-  ClientList ClientList[]
-}
-// ---------- VEHICLES (credentials live here) ----------
-model Vehicle {
-  id             Int           @id @default(autoincrement())
-  vehicleNumber  String        @unique
-  password       String        // hashed; for driver app login
-  model          String?
-  type           String?       // e.g., Truck, Bus, Car
-  status         VehicleStatus @default(ACTIVE)
-  companyId      Int
-  
-  // Last known location for quick access
-  lastLat        Decimal?      @db.Decimal(10,7)
-  lastLng        Decimal?      @db.Decimal(10,7)
-  lastLocationAt DateTime?
-
-  company        Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  locations      VehicleLocation[]
-  chats          ChatMessage[]
-  accesses       ClientVehicleAccess[]
-  vehicleChats   VehicleChat[]
-
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@index([companyId, status])
-  @@index([lastLocationAt])
-}
-
-// Fast time-series storage of pings
-model VehicleLocation {
-  id         Int      @id @default(autoincrement())
-  vehicleId  Int
-  lat        Decimal  @db.Decimal(10,7)
-  lng        Decimal  @db.Decimal(10,7)
-  speedKph   Decimal? @db.Decimal(6,2)
-  headingDeg Int?
-  recordedAt DateTime @default(now())
-
-  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-
-  @@index([vehicleId, recordedAt])
-}
-
-// ---------- CLIENTS & ACCESS ----------
-model Client {
-  id         Int      @id @default(autoincrement())
-  companyId  Int      // client belongs to a company who grants access
-  name       String?
-  email      String   @unique
-  createdAt  DateTime @default(now())
-
-  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  accesses   ClientVehicleAccess[]
-  sentMessages ChatMessage[] @relation("ClientSender")
-  clientChats ClientChat[]
-
-  ClientListMember ClientListMember[]
-}
-
-model ClientVehicleAccess {
-  id          Int      @id @default(autoincrement())
-  companyId   Int      // redundancy: who granted (helps querying)
-  clientId    Int
-  vehicleId   Int
-  createdAt   DateTime @default(now())
-
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-
-  @@unique([clientId, vehicleId])      // same client -> same vehicle only once
-  @@index([companyId])
-}
-
-// ---------- CLIENT LISTS (like Play Store tester lists) ----------
-model ClientList {
-  id         Int       @id @default(autoincrement())
-  companyId  Int
-  name       String
-  createdAt  DateTime  @default(now())
-
-  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  members    ClientListMember[]
-
-  @@unique([companyId, name])
-  @@index([companyId])
-}
-
-model ClientListMember {
-  id           Int       @id @default(autoincrement())
-  clientListId Int
-  clientId     Int
-  createdAt    DateTime  @default(now())
-
-  list         ClientList @relation(fields: [clientListId], references: [id], onDelete: Cascade)
-  client       Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
-
-  @@unique([clientListId, clientId])
-  @@index([clientId])
-}
-
-// ---------- CHAT (per-vehicle room) ----------
-model ChatMessage {
-  id              Int        @id @default(autoincrement())
-  vehicleId       Int
-  senderType      SenderType
-  senderCompanyId Int?       // when senderType = COMPANY
-  senderClientId  Int?       // when senderType = CLIENT
-  message         String
-  createdAt       DateTime   @default(now())
-
-  vehicle         Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  senderCompany   Company?   @relation("CompanySender", fields: [senderCompanyId], references: [id], onDelete: SetNull)
-  senderClient    Client?    @relation("ClientSender", fields: [senderClientId], references: [id], onDelete: SetNull)
-
-  @@index([vehicleId, createdAt])
-  @@index([senderCompanyId])
-  @@index([senderClientId])
-}
-
-// ---------- VEHICLE CHAT (real-time chat between company and driver) ----------
-model VehicleChat {
-  id              Int        @id @default(autoincrement())
-  vehicleId       Int
-  companyId       Int
-  senderType      SenderType
-  message         String
-  attachmentUrl   String?
-  isRead          Boolean    @default(false)
-  createdAt       DateTime   @default(now())
-
-  vehicle         Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  company         Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@index([vehicleId, createdAt])
-  @@index([companyId, createdAt])
-  @@index([isRead])
-}
-
-// ---------- CLIENT CHAT (real-time chat between company and client) ----------
-model ClientChat {
-  id              Int        @id @default(autoincrement())
-  clientId        Int
-  companyId       Int
-  senderType      SenderType
-  message         String
-  attachmentUrl   String?
-  isRead          Boolean    @default(false)
-  createdAt       DateTime   @default(now())
-
-  client          Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  company         Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@index([clientId, createdAt])
-  @@index([companyId, createdAt])
-  @@index([isRead])
-}
-
-// ---------- HELP & SUPPORT TICKETS ----------
-model HelpSupportTicket {
-  id          Int           @id @default(autoincrement())
-  companyId   Int
-  subject     String
-  description String
-  priority    TicketPriority @default(MEDIUM)
-  status      TicketStatus   @default(OPEN)
-  adminResponse String?
-  resolvedAt  DateTime?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-
-  company     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  @@index([companyId, status])
-  @@index([createdAt])
-}
-
-// ---------- OTP FOR AUTHENTICATION ----------
-model OTP {
-  id        String   @id @default(uuid())
-  phone     String
-  code      String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  
-  @@index([phone, code])
-  @@index([expiresAt])
 }

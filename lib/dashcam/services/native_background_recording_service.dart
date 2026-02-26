@@ -1,6 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/services.dart';
-import 'package:image_gallery_saver/image_gallery_saver.dart';
+import 'package:okdriver/utlis/android14_storage_helper.dart';
 
 class NativeBackgroundRecordingService {
   static const MethodChannel _channel =
@@ -168,10 +169,24 @@ class NativeBackgroundRecordingService {
   // Save video to gallery
   Future<void> _saveToGallery(String filePath) async {
     try {
-      final result = await ImageGallerySaver.saveFile(filePath);
-      print('Video saved to gallery: $result');
+      final hasPerm = await Android14StorageHelper.areStoragePermissionsGranted();
+      if (!hasPerm) {
+        await Android14StorageHelper.requestStoragePermissions();
+      }
+      final baseDir = await Android14StorageHelper.getAppStorageDirectory();
+      if (baseDir == null) {
+        return;
+      }
+      final dstDir = Directory('$baseDir/dashcam_videos');
+      if (!await dstDir.exists()) {
+        await dstDir.create(recursive: true);
+      }
+      final name = 'dashcam_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final destPath = '${dstDir.path}/$name';
+      await File(filePath).copy(destPath);
+      print('Video saved to storage: $destPath');
     } catch (e) {
-      print('Error saving video to gallery: $e');
+      print('Error saving video to storage: $e');
     }
   }
 

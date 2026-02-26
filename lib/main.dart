@@ -4,6 +4,7 @@ import 'package:okdriver/bottom_navigation_bar/bottom_navigation_bar.dart';
 import 'package:okdriver/driver_profile_screen/driver_profile_screen.dart';
 import 'package:okdriver/drowsiness_monitoring/dms.dart';
 import 'package:okdriver/home_screen/homescreen.dart';
+import 'package:okdriver/permissionscreen/permissionscreen.dart';
 import 'package:okdriver/role_selection/role_selection.dart';
 import 'package:okdriver/splashscreen/splashscreen.dart';
 
@@ -50,7 +51,7 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      home: SplashScreen(),
+      home: DrowsinessMonitoringScreen(),
     );
   }
 }

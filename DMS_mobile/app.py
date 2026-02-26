@@ -34,8 +34,8 @@ face_mesh = None
 # Detection parameters
 EAR_THRESHOLD = 0.25
 MAR_THRESHOLD = 0.5
-DROWSY_FRAME_THRESHOLD = 10  # Reduced for web demo
-YAWNING_FRAME_THRESHOLD = 10  # Reduced for web demo
+DROWSY_FRAME_THRESHOLD = 7  # Reduced for web demo
+YAWNING_FRAME_THRESHOLD = 7  # Reduced for web demo
 
 # MediaPipe landmark indices
 LEFT_EYE_IDX = [33, 160, 158, 133, 153, 144]

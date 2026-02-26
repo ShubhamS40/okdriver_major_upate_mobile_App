@@ -3,10 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:country_code_picker/country_code_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:okdriver/driver_auth_screen/verify_otp.dart';
+import 'package:okdriver/driver_auth_screen/driver_registration_screen.dart';
+import 'package:okdriver/bottom_navigation_bar/bottom_navigation_bar.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:okdriver/service/api_config.dart';
+import 'package:okdriver/service/usersession_service.dart';
 import 'package:provider/provider.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:convert';
+import 'dart:async';
 
 class SendOtpScreen extends StatefulWidget {
   const SendOtpScreen({Key? key}) : super(key: key);
@@ -132,6 +137,122 @@ class _SendOtpScreenState extends State<SendOtpScreen>
     });
   }
 
+  // Get device information
+  Future<String> _getDeviceInfo() async {
+    try {
+      DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+      if (Theme.of(context).platform == TargetPlatform.android) {
+        AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+        return 'Android ${androidInfo.version.release} - ${androidInfo.model}';
+      } else if (Theme.of(context).platform == TargetPlatform.iOS) {
+        IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
+        return 'iOS ${iosInfo.systemVersion} - ${iosInfo.model}';
+      }
+      return 'Unknown Device';
+    } catch (e) {
+      print('Error getting device info: $e');
+      return 'Unknown Device';
+    }
+  }
+
+  // Handle bypass OTP - directly verify and navigate to home
+  Future<void> _handleBypassOTP(String phoneNumber) async {
+    try {
+      print('Handling bypass OTP for phone: $phoneNumber');
+      
+      // Get device info
+      final deviceInfo = await _getDeviceInfo();
+      
+      // Call verify OTP with dummy code (backend will bypass verification)
+      final response = await http.post(
+        Uri.parse(ApiConfig.verifyOtpUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'phone': phoneNumber.trim(),
+          'code': '000000', // Dummy code - backend will bypass for these numbers
+          'deviceInfo': deviceInfo,
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      print('Bypass verify response status: ${response.statusCode}');
+      print('Bypass verify response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final Map<String, dynamic> userData = data['user'] ?? {};
+        final String token = data['token']?.toString() ?? '';
+        final String sessionId = data['sessionId']?.toString() ?? '';
+        final bool isNewUser = data['isNewUser'] ?? true;
+
+        // Use UserSessionService to handle login
+        final sessionService = UserSessionService.instance;
+        final success = await sessionService.login(userData, token, sessionId);
+
+        if (success && mounted) {
+          HapticFeedback.heavyImpact();
+          
+          // Navigate based on user status
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              if (isNewUser) {
+                Navigator.pushReplacement(
+                  context,
+                  PageRouteBuilder(
+                    pageBuilder: (context, animation, secondaryAnimation) =>
+                        DriverRegistrationScreen(
+                      phoneNumber: phoneNumber,
+                      userId: userData['id']?.toString() ?? '',
+                    ),
+                    transitionsBuilder:
+                        (context, animation, secondaryAnimation, child) {
+                      return SlideTransition(
+                        position: animation.drive(
+                          Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
+                              .chain(CurveTween(curve: Curves.easeInOut)),
+                        ),
+                        child: child,
+                      );
+                    },
+                    transitionDuration: const Duration(milliseconds: 500),
+                  ),
+                );
+              } else {
+                Navigator.pushReplacement(
+                  context,
+                  PageRouteBuilder(
+                    pageBuilder: (context, animation, secondaryAnimation) =>
+                        BottomNavScreen(),
+                    transitionsBuilder:
+                        (context, animation, secondaryAnimation, child) {
+                      return SlideTransition(
+                        position: animation.drive(
+                          Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
+                              .chain(CurveTween(curve: Curves.easeInOut)),
+                        ),
+                        child: child,
+                      );
+                    },
+                    transitionDuration: const Duration(milliseconds: 500),
+                  ),
+                );
+              }
+            }
+          });
+        } else {
+          _showErrorSnackBar("Failed to create session. Please try again.");
+        }
+      } else {
+        _showErrorSnackBar("Failed to verify. Please try again.");
+      }
+    } catch (e) {
+      print('Bypass OTP error: $e');
+      _showErrorSnackBar("Network error. Please check your connection.");
+    }
+  }
+
   Future<void> _sendOtp() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -156,30 +277,42 @@ class _SendOtpScreenState extends State<SendOtpScreen>
       );
 
       if (response.statusCode == 200) {
-        HapticFeedback.heavyImpact();
-        _showSuccessAnimation();
+        final responseData = json.decode(response.body);
+        
+        // Check if OTP was bypassed
+        if (responseData['status'] == 'bypassed') {
+          print('OTP bypassed for number: $fullNumber');
+          HapticFeedback.heavyImpact();
+          
+          // Directly handle bypass - verify and navigate to home
+          await _handleBypassOTP(fullNumber);
+        } else {
+          // Normal OTP flow - navigate to verification screen
+          HapticFeedback.heavyImpact();
+          _showSuccessAnimation();
 
-        await Future.delayed(const Duration(milliseconds: 800));
+          await Future.delayed(const Duration(milliseconds: 800));
 
-        if (mounted) {
-          Navigator.push(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (context, animation, secondaryAnimation) =>
-                  OTPVerificationScreen(phoneNumber: fullNumber),
-              transitionsBuilder:
-                  (context, animation, secondaryAnimation, child) {
-                return SlideTransition(
-                  position: animation.drive(
-                    Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
-                        .chain(CurveTween(curve: Curves.easeInOut)),
-                  ),
-                  child: child,
-                );
-              },
-              transitionDuration: const Duration(milliseconds: 500),
-            ),
-          );
+          if (mounted) {
+            Navigator.push(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    OTPVerificationScreen(phoneNumber: fullNumber),
+                transitionsBuilder:
+                    (context, animation, secondaryAnimation, child) {
+                  return SlideTransition(
+                    position: animation.drive(
+                      Tween(begin: const Offset(1.0, 0.0), end: Offset.zero)
+                          .chain(CurveTween(curve: Curves.easeInOut)),
+                    ),
+                    child: child,
+                  );
+                },
+                transitionDuration: const Duration(milliseconds: 500),
+              ),
+            );
+          }
         }
       } else {
         _showErrorSnackBar("Failed to send OTP. Please try again.");

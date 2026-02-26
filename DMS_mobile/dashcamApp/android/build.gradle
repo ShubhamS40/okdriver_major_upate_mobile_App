@@ -1,0 +1,68 @@
+buildscript {
+    ext.kotlin_version = '1.9.22'
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.3.0'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            def android = project.android
+            if (android.hasProperty('namespace') && android.namespace == null) {
+                // Try to extract from AndroidManifest.xml
+                def manifestFile = file("${project.projectDir}/src/main/AndroidManifest.xml")
+                if (manifestFile.exists()) {
+                    try {
+                        def manifestContent = manifestFile.getText('UTF-8')
+                        def packageMatch = (manifestContent =~ /package=["']([^"']+)["']/)
+                        if (packageMatch) {
+                            android.namespace = packageMatch[0][1]
+                        }
+                    } catch (Exception e) {
+                        // Ignore parsing errors
+                    }
+                }
+                // Set default namespace based on project name
+                if (android.namespace == null) {
+                    switch(project.name) {
+                        case 'google_mlkit_commons':
+                            android.namespace = 'com.google.mlkit.common'
+                            break
+                        case 'google_mlkit_face_detection':
+                            android.namespace = 'com.google.mlkit.vision.face'
+                            break
+                        default:
+                            android.namespace = project.group ?: "com.example.${project.name}"
+                    }
+                }
+            }
+        }
+    }
+}
+
+rootProject.buildDir = '../build'
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
+
