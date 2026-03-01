@@ -2,6 +2,7 @@ package app.dash.okDriver
 
 import android.content.Context
 import android.content.Intent
+import android.Manifest
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.*
@@ -24,6 +25,7 @@ import java.io.IOException
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import androidx.core.content.ContextCompat
 
 /**
  * DrowsinessOverlayView
@@ -241,6 +243,16 @@ class DrowsinessOverlayView(
 
     private fun startSTT() {
         if (isListening || !active) return
+
+        // Ensure mic permission is granted before starting background STT
+        val hasMic = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!hasMic) {
+            setStatus("Mic permission needed — use buttons below.")
+            return
+        }
 
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             setStatus("Voice N/A — use buttons"); return

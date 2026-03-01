@@ -124,104 +124,104 @@ class MainActivity : FlutterActivity() {
             }
 
         // =====================================================================
-        // ✅ DMS MethodChannel — handles all drowsiness service commands
-        //    INCLUDING the new playAlarm / stopAlarm actions
+        // ✅ DMS MethodChannel
         // =====================================================================
-         val dmsChannel = MethodChannel(
-    flutterEngine.dartExecutor.binaryMessenger,
-    "com.example.okdriver/drowsiness"
-)
-dmsChannel.setMethodCallHandler { call, result ->
-    val intent = Intent(this, DrowsinessMonitoringService::class.java)
-    when (call.method) {
+        val dmsChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.example.okdriver/drowsiness"
+        )
+        dmsChannel.setMethodCallHandler { call, result ->
+            val intent = Intent(this, DrowsinessMonitoringService::class.java)
+            when (call.method) {
 
-        "startService" -> {
-            // ✅ Request overlay permission before starting service
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                !android.provider.Settings.canDrawOverlays(this)
-            ) {
-                val permIntent = Intent(
-                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    android.net.Uri.parse("package:$packageName")
-                )
-                startActivity(permIntent)
-                // Still start service — overlay will fall back to Activity if no permission
+                "startService" -> {
+                    // ✅ Overlay permission check — agar nahi hai toh settings open karo
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                        !android.provider.Settings.canDrawOverlays(this)
+                    ) {
+                        val permIntent = Intent(
+                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            android.net.Uri.parse("package:$packageName")
+                        )
+                        startActivity(permIntent)
+                        // Service start karo tab bhi — foreground mein Flutter dialog kaam karega
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
+                    result.success(true)
+                }
+
+                "stopService" -> {
+                    stopService(intent)
+                    DrowsinessMonitoringService.isServiceRunning = false
+                    result.success(true)
+                }
+
+                "isRunning" -> result.success(DrowsinessMonitoringService.isServiceRunning)
+
+                "updateVisibility" -> {
+                    val isVisible = call.argument<Boolean>("visible") ?: true
+                    if (DrowsinessMonitoringService.isServiceRunning) {
+                        intent.action = "ACTION_UPDATE_VISIBILITY"
+                        intent.putExtra("isVisible", isVisible)
+                        startService(intent)
+                    }
+                    result.success(true)
+                }
+
+                "rebindPreview" -> {
+                    if (DrowsinessMonitoringService.isServiceRunning) {
+                        intent.action = "ACTION_REBIND_PREVIEW"
+                        startService(intent)
+                    }
+                    result.success(true)
+                }
+
+                "playAlarm" -> {
+                    if (DrowsinessMonitoringService.isServiceRunning) {
+                        intent.action = "ACTION_PLAY_ALARM"
+                        startService(intent)
+                    }
+                    result.success(true)
+                }
+
+                "stopAlarm" -> {
+                    if (DrowsinessMonitoringService.isServiceRunning) {
+                        intent.action = "ACTION_STOP_ALARM"
+                        startService(intent)
+                    }
+                    result.success(true)
+                }
+
+                "checkOverlayPermission" -> {
+                    val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        android.provider.Settings.canDrawOverlays(this)
+                    } else true
+                    result.success(canDraw)
+                }
+
+                "requestOverlayPermission" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                        !android.provider.Settings.canDrawOverlays(this)
+                    ) {
+                        val permIntent = Intent(
+                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            android.net.Uri.parse("package:$packageName")
+                        )
+                        startActivity(permIntent)
+                    }
+                    result.success(true)
+                }
+
+                else -> result.notImplemented()
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-            result.success(true)
         }
 
-        "stopService" -> {
-            stopService(intent)
-            DrowsinessMonitoringService.isServiceRunning = false
-            result.success(true)
-        }
-
-        "isRunning" -> result.success(DrowsinessMonitoringService.isServiceRunning)
-
-        "updateVisibility" -> {
-            val isVisible = call.argument<Boolean>("visible") ?: true
-            if (DrowsinessMonitoringService.isServiceRunning) {
-                intent.action = "ACTION_UPDATE_VISIBILITY"
-                intent.putExtra("isVisible", isVisible)
-                startService(intent)
-            }
-            result.success(true)
-        }
-
-        "rebindPreview" -> {
-            if (DrowsinessMonitoringService.isServiceRunning) {
-                intent.action = "ACTION_REBIND_PREVIEW"
-                startService(intent)
-            }
-            result.success(true)
-        }
-
-        "playAlarm" -> {
-            if (DrowsinessMonitoringService.isServiceRunning) {
-                intent.action = "ACTION_PLAY_ALARM"
-                startService(intent)
-            }
-            result.success(true)
-        }
-
-        "stopAlarm" -> {
-            if (DrowsinessMonitoringService.isServiceRunning) {
-                intent.action = "ACTION_STOP_ALARM"
-                startService(intent)
-            }
-            result.success(true)
-        }
-
-        "checkOverlayPermission" -> {
-            val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                android.provider.Settings.canDrawOverlays(this)
-            } else true
-            result.success(canDraw)
-        }
-
-        "requestOverlayPermission" -> {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                !android.provider.Settings.canDrawOverlays(this)
-            ) {
-                val permIntent = Intent(
-                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    android.net.Uri.parse("package:$packageName")
-                )
-                startActivity(permIntent)
-            }
-            result.success(true)
-        }
-
-        else -> result.notImplemented()
-    }
-}
         // =====================================================================
-        // ✅ DMS EventChannel — streams detection results back to Flutter
+        // ✅ DMS EventChannel — streams detection results to Flutter
         // =====================================================================
         val dmsEventChannel = EventChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -533,7 +533,11 @@ class DmsCameraPreviewView(
     context: Context,
     private val activity: MainActivity
 ) : PlatformView {
-    private val previewView: PreviewView = PreviewView(context)
+    private val previewView: PreviewView = PreviewView(context).apply {
+        scaleType = PreviewView.ScaleType.FIT_CENTER
+        implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        setBackgroundColor(android.graphics.Color.BLACK)
+    }
 
     init {
         DrowsinessMonitoringService.currentPreviewView = previewView

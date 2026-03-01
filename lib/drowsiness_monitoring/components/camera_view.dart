@@ -34,7 +34,6 @@ class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // No controller to dispose in PlatformView preview
     super.dispose();
   }
 
@@ -49,7 +48,6 @@ class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(CameraView oldWidget) {
     super.didUpdateWidget(oldWidget);
-
     // No-op: capturing handled natively
   }
 
@@ -82,8 +80,12 @@ class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.hardEdge,
         child: Stack(
+          clipBehavior: Clip.hardEdge,
+          fit: StackFit.expand,
           children: [
+            // ── Camera Feed ────────────────────────────────────────────────
             Positioned.fill(
               child: Platform.isAndroid
                   ? const AndroidView(
@@ -93,21 +95,24 @@ class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
                   : Container(color: Colors.black),
             ),
 
-            // Face Landmarks Overlay
+            // ── Face Landmarks Overlay ─────────────────────────────────────
+            // ✅ FIX: Sirf DROWSY aur YAWNING par overlay dikhao
+            // ALERT status par green overlay nahi aayegi
             if (widget.detectionResult != null &&
-                widget.detectionResult!['face_detected'] == true)
+                widget.detectionResult!['face_detected'] == true &&
+                _shouldShowOverlay(widget.detectionResult!['status']))
               Positioned.fill(
                 child: _buildFaceOverlay(),
               ),
 
-            // Status indicator
+            // ── Status Indicator (top-left) ────────────────────────────────
             Positioned(
               top: 20,
               left: 20,
               child: _buildStatusIndicator(),
             ),
 
-            // Monitoring indicator
+            // ── Monitoring Badge (top-right) ───────────────────────────────
             if (widget.isMonitoring)
               Positioned(
                 top: 20,
@@ -147,6 +152,21 @@ class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  /// ✅ FIX: Sirf DROWSY aur YAWNING par face landmark overlay dikhao
+  /// ALERT par transparent/koi overlay nahi
+  bool _shouldShowOverlay(String? status) {
+    if (status == null) return false;
+    switch (status) {
+      case 'DROWSY':
+      case 'YAWNING':
+        return true;
+      case 'ALERT':
+      case 'NO_FACE':
+      default:
+        return false;
+    }
   }
 
   Widget _buildStatusIndicator() {
@@ -262,13 +282,18 @@ class FaceLandmarksPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // ✅ FIX: ALERT par kuch mat draw karo — transparent return
+    final color = _getStatusColor();
+    if (color == Colors.transparent) return;
+
     final paint = Paint()
-      ..color = _getStatusColor()
+      ..color = color
       ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke;
 
     final fillPaint = Paint()
-      ..color = _getStatusColor().withOpacity(0.2)
+      ..color =
+          color.withOpacity(0.15) // ✅ Fill opacity kam ki — zyada visible nahi
       ..style = PaintingStyle.fill;
 
     // Draw left eye
@@ -320,6 +345,8 @@ class FaceLandmarksPainter extends CustomPainter {
     canvas.drawPath(path, paint);
   }
 
+  /// ✅ FIX: ALERT aur default par transparent return karo
+  /// Sirf DROWSY → orange/red, YAWNING → yellow
   Color _getStatusColor() {
     switch (status) {
       case 'DROWSY':
@@ -327,9 +354,9 @@ class FaceLandmarksPainter extends CustomPainter {
       case 'YAWNING':
         return Colors.yellow.shade700;
       case 'ALERT':
-        return Colors.green;
+        return Colors.transparent; // ✅ Koi overlay nahi
       default:
-        return Colors.grey;
+        return Colors.transparent; // ✅ Koi overlay nahi
     }
   }
 

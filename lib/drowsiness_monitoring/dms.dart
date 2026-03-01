@@ -11,13 +11,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:permission_handler/permission_handler.dart';
 
-/// DrowsinessMonitoringScreen — Flutter UI layer
-///
-/// Key changes vs original:
-/// - AssistantDialog still shows in Flutter when app is FOREGROUND
-/// - When app is BACKGROUND, native BackgroundAssistantActivity handles it
-/// - Alarm is now played natively (no just_audio / ExoPlayer)
-/// - VoiceAlertService.playAlarmThenCheckIn() triggers native alarm via MethodChannel
 class DrowsinessMonitoringScreen extends StatefulWidget {
   const DrowsinessMonitoringScreen({Key? key}) : super(key: key);
 
@@ -96,13 +89,19 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     if (mounted) setState(() => _isInitializing = false);
   }
 
+  // =========================================================================
+  // ✅ Permission request — Camera + Overlay (background alert ke liye)
+  // =========================================================================
   Future<bool> _requestAllPermissions() async {
     if (!Platform.isAndroid) return true;
+
+    // Step 1: Camera + Mic permission
     final statuses = await [
       Permission.camera,
       Permission.microphone,
       Permission.speech,
     ].request();
+
     final cameraGranted = statuses[Permission.camera]?.isGranted ?? false;
     if (!cameraGranted) {
       if (mounted) {
@@ -115,27 +114,126 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       }
       return false;
     }
+
+    // Step 2: Overlay permission check (background alert ke liye zaroori)
+    try {
+      final hasOverlay =
+          await _dmsChannel.invokeMethod<bool>('checkOverlayPermission') ??
+              false;
+
+      if (!hasOverlay && mounted) {
+        final shouldRequest = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            backgroundColor:
+                _isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                const Icon(Icons.warning_amber_rounded,
+                    color: Colors.orange, size: 28),
+                const SizedBox(width: 10),
+                Text(
+                  'Background Alert',
+                  style: TextStyle(
+                    color: _isDarkMode ? Colors.white : Colors.black87,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              'Background mein drowsiness alert screen par dikhane ke liye "Display over other apps" permission chahiye.\n\nSettings mein OKDriver ko Allow karo.',
+              style: TextStyle(
+                color: _isDarkMode ? Colors.white70 : Colors.black54,
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Skip',
+                    style: TextStyle(color: Colors.grey, fontSize: 14)),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                ),
+                child: const Text(
+                  'Give Permission',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        );
+
+        if (shouldRequest == true) {
+          await _dmsChannel.invokeMethod('requestOverlayPermission');
+          // Settings se wapas aane ka wait karo
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text(
+                    'Settings mein OKDriver ko Allow karke wapas aao'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 4),
+                action: SnackBarAction(
+                  label: 'OK',
+                  textColor: Colors.white,
+                  onPressed: () {},
+                ),
+              ),
+            );
+          }
+          await Future.delayed(const Duration(seconds: 3));
+        }
+      }
+    } catch (e) {
+      debugPrint('[DMS] Overlay permission check error: $e');
+    }
+
     await _voiceAlertService.initialize();
     return true;
   }
 
+  // =========================================================================
+  // Detection message handler
+  // =========================================================================
   void _handleDetectionMessage(dynamic data) {
     try {
       final message = data is String ? json.decode(data) : data;
 
-      // Native activity already handles background dialog.
-      // When Flutter is foreground, show Flutter dialog as well.
       if (message['type'] == 'show_dialog') {
         final events = message['drowsy_events'] ?? _drowsyEvents;
-        if (mounted) setState(() => _drowsyEvents = events);
-
-        if (!_isDialogShowing && _lifecycleState == AppLifecycleState.resumed) {
-          // App is foreground — show Flutter dialog
-          // (Native activity also opens, so just show Flutter version)
-          _showAssistantBottomSheet();
-          _lastDialogEvent = _drowsyEvents;
+        if (mounted) {
+          setState(() {
+            _drowsyEvents = events;
+            _lastDialogEvent = _drowsyEvents;
+          });
         }
-        // If background: native BackgroundAssistantActivity already launched
+
+        // ✅ Foreground mein Flutter dialog, background mein WindowManager overlay
+        if (_lifecycleState == AppLifecycleState.resumed &&
+            !_isDialogShowing &&
+            mounted) {
+          _showAssistantBottomSheet();
+        } else {
+          debugPrint(
+              '[DMS] show_dialog skipped — lifecycle: $_lifecycleState, dialogShowing: $_isDialogShowing');
+        }
         return;
       }
 
@@ -177,20 +275,9 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     final alertLevel = result['alert_level'] ?? 0;
 
     if (shouldAlert && status == 'DROWSY') {
-      // Native alarm is triggered from the service directly.
-      // Flutter-side TTS alert (foreground only):
       _voiceAlertService.alertDrowsy(isCritical: alertLevel >= 4);
       _pulseController.repeat(reverse: true);
       _drowsyEvents++;
-
-      // Flutter dialog — only show if foreground AND not already showing
-      if (_drowsyEvents >= 2 &&
-          _drowsyEvents > _lastDialogEvent &&
-          !_isDialogShowing &&
-          _lifecycleState == AppLifecycleState.resumed) {
-        _showAssistantBottomSheet();
-        _lastDialogEvent = _drowsyEvents;
-      }
     } else if (status == 'YAWNING') {
       _voiceAlertService.alertYawning();
     } else if (status == 'NO_FACE') {
@@ -202,8 +289,6 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     }
   }
 
-  /// Shows Flutter-side AssistantDialog (foreground only).
-  /// Background is handled by BackgroundAssistantActivity (Kotlin).
   void _showAssistantBottomSheet() {
     if (!mounted || _isDialogShowing) return;
     _isDialogShowing = true;
@@ -237,8 +322,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
         ),
       ).then((_) => _isDialogShowing = false);
     }).catchError((e) {
-      debugPrint(
-          '[DMS] playAlarmThenCheckIn error: $e — opening dialog anyway');
+      debugPrint('[DMS] playAlarmThenCheckIn error: $e');
       _isDialogShowing = false;
       if (!mounted) return;
       _isDialogShowing = true;
@@ -276,6 +360,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
   Future<void> _startNativeDMS() async {
     final granted = await _requestAllPermissions();
     if (!granted) return;
+
     setState(() {
       _isMonitoring = true;
       _drowsyEvents = 0;
@@ -341,7 +426,9 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     });
   }
 
-  // ─── UI (unchanged) ─────────────────────────────────────────────────────────
+  // =========================================================================
+  // UI
+  // =========================================================================
 
   @override
   Widget build(BuildContext context) {
@@ -460,7 +547,6 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
           scale: _pulseAnimation.value,
           child: Container(
             width: double.infinity,
-            height: MediaQuery.of(context).size.width - 40,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
               color: Colors.black,
@@ -482,11 +568,14 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
-              child: CameraView(
-                onFrameCaptured: (frameData) {},
-                isMonitoring: _isMonitoring,
-                detectionResult: _detectionResult,
-                shouldCapture: () => false,
+              child: AspectRatio(
+                aspectRatio: 4 / 3,
+                child: CameraView(
+                  onFrameCaptured: (frameData) {},
+                  isMonitoring: _isMonitoring,
+                  detectionResult: _detectionResult,
+                  shouldCapture: () => false,
+                ),
               ),
             ),
           ),

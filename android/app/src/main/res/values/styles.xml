@@ -1,23 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <!-- Show a splash screen on the activity. Automatically removed when
-             the Flutter engine draws its first frame -->
+
+    <!-- Base Flutter launch theme -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
     </style>
-    <!-- Theme applied to the Android Window as soon as the process has started.
-         This theme determines the color of the Android Window while your
-         Flutter UI initializes, as well as behind your Flutter UI while its
-         running.
 
-         This Theme is only used starting with V2 of Flutter's Android embedding. -->
-    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+    <!-- Normal app theme after launch -->
+    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
 
-    <!-- ✅ NEW: Translucent overlay theme for BackgroundAssistantActivity -->
-    <style name="Theme.Translucent" parent="android:Theme.Translucent.NoTitleBar">
+    <!--
+        ✅ CRITICAL: BackgroundAssistantActivity ke liye translucent theme
+        - windowIsTranslucent = true → background dikh sakta hai
+        - windowIsFloating = false → full width milti hai
+        - windowBackground = transparent → apna background draw karega
+        - showWhenLocked = true → lock screen ke upar bhi dikhega
+        - turnScreenOn = true → screen ON ho jaata hai
+    -->
+    <style name="Theme.Translucent" parent="@android:style/Theme.DeviceDefault.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:windowContentOverlay">@null</item>
@@ -25,5 +27,9 @@
         <item name="android:windowIsFloating">false</item>
         <item name="android:backgroundDimEnabled">true</item>
         <item name="android:backgroundDimAmount">0.75</item>
+        <!-- ✅ Lock screen ke upar dikhne ke liye -->
+        <item name="android:showWhenLocked">true</item>
+        <item name="android:turnScreenOn">true</item>
     </style>
+
 </resources>

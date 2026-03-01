@@ -113,7 +113,7 @@ class _AssistantDialogState extends State<AssistantDialog>
         "message": query,
         "userId": "1",
         "modelProvider": "together",
-        "modelName": "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+        "modelName": "meta-llama/Llama-3.2-3B-Instruct-Turbo",
         "speakerId": "1",
         "enablePremium": true
       };
