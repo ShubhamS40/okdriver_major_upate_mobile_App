@@ -25,7 +25,8 @@ class _DashcamScreenState extends State<DashcamScreen>
 
   bool _isRecording = false;
   String _recordingDuration = '00:00';
-  String _selectedDuration = '15m';
+  // Default recording segment duration
+  String _selectedDuration = '10m';
   String _storageOption = 'local';
   Timer? _recordingTimer;
   int _elapsedSeconds = 0;
@@ -86,6 +87,7 @@ class _DashcamScreenState extends State<DashcamScreen>
     try {
       await _recorderChannel.invokeMethod('startService', {
         'cameraType': widget.cameraType.toString().split('.').last,
+        'segmentMinutes': _getDurationInMinutes(),
       });
       setState(() {
         _isRecording = true;
@@ -149,13 +151,13 @@ class _DashcamScreenState extends State<DashcamScreen>
 
   int _getDurationInMinutes() {
     switch (_selectedDuration) {
+      case '20m':
+        return 20;
       case '30m':
         return 30;
-      case '1h':
-        return 60;
-      case '15m':
+      case '10m':
       default:
-        return 15;
+        return 10;
     }
   }
 
@@ -253,9 +255,9 @@ class _DashcamScreenState extends State<DashcamScreen>
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _buildDurationOption('15m', '15 min'),
+                      _buildDurationOption('10m', '10 min'),
+                      _buildDurationOption('20m', '20 min'),
                       _buildDurationOption('30m', '30 min'),
-                      _buildDurationOption('1h', '1 hour'),
                     ],
                   ),
                   const SizedBox(height: 24),

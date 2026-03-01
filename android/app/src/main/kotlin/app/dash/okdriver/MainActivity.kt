@@ -91,10 +91,16 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "startService" -> {
                         val cameraType = call.argument<String>("cameraType")
+                        val segmentMinutes = call.argument<Int>("segmentMinutes") ?: 10
+
                         BackgroundRecordingService.currentLensFacing =
                             if (cameraType == "back") CameraSelector.LENS_FACING_BACK
                             else CameraSelector.LENS_FACING_FRONT
-                        val serviceIntent = intentWithNewVideoPath(intent)
+
+                        val serviceIntent = intentWithNewVideoPath(intent).apply {
+                            putExtra("segmentMinutes", segmentMinutes)
+                        }
+
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             startForegroundService(serviceIntent)
                         } else {
@@ -135,17 +141,6 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
 
                 "startService" -> {
-                    // ✅ Overlay permission check — agar nahi hai toh settings open karo
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                        !android.provider.Settings.canDrawOverlays(this)
-                    ) {
-                        val permIntent = Intent(
-                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            android.net.Uri.parse("package:$packageName")
-                        )
-                        startActivity(permIntent)
-                        // Service start karo tab bhi — foreground mein Flutter dialog kaam karega
-                    }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         startForegroundService(intent)
                     } else {
@@ -212,6 +207,14 @@ class MainActivity : FlutterActivity() {
                             android.net.Uri.parse("package:$packageName")
                         )
                         startActivity(permIntent)
+                    }
+                    result.success(true)
+                }
+
+                "assistantClosed" -> {
+                    if (DrowsinessMonitoringService.isServiceRunning) {
+                        intent.action = "ACTION_ASSISTANT_CLOSED"
+                        startService(intent)
                     }
                     result.success(true)
                 }
@@ -354,6 +357,11 @@ class BackgroundRecordingService : LifecycleService() {
     private var recording: Recording? = null
     private var cameraProvider: ProcessCameraProvider? = null
 
+    // Segment recording config
+    private var segmentDurationMs: Long = 10 * 60_000L   // default 10 minutes
+    private var segmentTimer: java.util.Timer? = null
+    private val segmentUris: java.util.ArrayDeque<android.net.Uri> = java.util.ArrayDeque()
+
     companion object {
         var isServiceRunning = false
         var currentLensFacing = CameraSelector.LENS_FACING_FRONT
@@ -377,6 +385,10 @@ class BackgroundRecordingService : LifecycleService() {
                 updateNotification(isVisible)
             }
             else -> if (!isServiceRunning) {
+                // Read desired segment duration (minutes) from intent, fallback to 10
+                val minutes = intent?.getIntExtra("segmentMinutes", 10) ?: 10
+                segmentDurationMs = minutes.coerceAtLeast(1) * 60_000L
+
                 isServiceRunning = true
                 updateNotification(true)
                 startCamera()
@@ -469,24 +481,8 @@ class BackgroundRecordingService : LifecycleService() {
                     cameraProvider?.bindToLifecycle(this, selector, imageAnalysis, videoCapture!!)
                 }
 
-                val opts = MediaStoreOutputOptions.Builder(
-                    contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                ).setContentValues(ContentValues().apply {
-                    put(
-                        MediaStore.MediaColumns.DISPLAY_NAME,
-                        "REC_${System.currentTimeMillis()}"
-                    )
-                    put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-                    put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/OKDriver-Dashcam")
-                }).build()
-
-                recording?.stop()
-                recording = videoCapture?.output
-                    ?.prepareRecording(this, opts)
-                    ?.withAudioEnabled()
-                    ?.start(ContextCompat.getMainExecutor(this)) { event ->
-                        Log.d("BackgroundRecordingService", "Recording event: $event")
-                    }
+                // Start first recording segment
+                startNewSegment()
             } catch (e: Exception) {
                 Log.e("BackgroundRecordingService", "Camera binding failed", e)
                 isServiceRunning = false
@@ -496,11 +492,73 @@ class BackgroundRecordingService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        segmentTimer?.cancel()
+        segmentTimer = null
         recording?.stop()
         recording = null
         cameraProvider?.unbindAll()
         isServiceRunning = false
         super.onDestroy()
+    }
+
+    // Start a new fixed-duration recording segment
+    private fun startNewSegment() {
+        val vc = videoCapture ?: return
+
+        // Cancel any existing timer and schedule a new one
+        segmentTimer?.cancel()
+        segmentTimer = java.util.Timer()
+        segmentTimer?.schedule(object : java.util.TimerTask() {
+            override fun run() {
+                // When duration completes, start next segment on main thread
+                ContextCompat.getMainExecutor(this@BackgroundRecordingService).execute {
+                    if (isServiceRunning) {
+                        startNewSegment()
+                    }
+                }
+            }
+        }, segmentDurationMs)
+
+        val displayName = "REC_${System.currentTimeMillis()}"
+        val opts = MediaStoreOutputOptions.Builder(
+            contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        ).setContentValues(ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/OKDriver-Dashcam")
+        }).build()
+
+        // Stop any current recording and start a fresh one
+        try {
+            recording?.stop()
+        } catch (_: Exception) {
+        }
+
+        recording = vc.output
+            .prepareRecording(this, opts)
+            .withAudioEnabled()
+            .start(ContextCompat.getMainExecutor(this)) { event ->
+                Log.d("BackgroundRecordingService", "Recording event: $event")
+                if (event is androidx.camera.video.VideoRecordEvent.Finalize) {
+                    val uri = event.outputResults.outputUri
+                    handleSegmentFinalized(uri)
+                }
+            }
+    }
+
+    // Keep only the latest 3 segments, delete oldest from gallery
+    private fun handleSegmentFinalized(uri: android.net.Uri) {
+        if (uri == android.net.Uri.EMPTY) return
+        segmentUris.addLast(uri)
+        if (segmentUris.size > 3) {
+            val oldest = segmentUris.removeFirst()
+            try {
+                contentResolver.delete(oldest, null, null)
+                Log.d("BackgroundRecordingService", "Deleted oldest segment: $oldest")
+            } catch (e: Exception) {
+                Log.e("BackgroundRecordingService", "Failed to delete old segment: $e")
+            }
+        }
     }
 }
 

@@ -5,9 +5,8 @@ import 'dart:async';
 
 /// VoiceAlertService — Flutter side
 ///
-/// Alarm is now played natively via Android MediaPlayer (in DrowsinessMonitoringService).
-/// This class only handles Flutter-side TTS and coordination.
-/// just_audio / ExoPlayer are completely removed — they caused UnrecognizedInputFormatException.
+/// Alarm is played natively via Android MediaPlayer (in DrowsinessMonitoringService).
+/// This class handles Flutter-side TTS and alarm coordination.
 class VoiceAlertService {
   static final VoiceAlertService _instance = VoiceAlertService._internal();
   factory VoiceAlertService() => _instance;
@@ -18,7 +17,6 @@ class VoiceAlertService {
   bool _isSpeaking = false;
   DateTime? _lastAlertTime;
 
-  // MethodChannel to trigger native alarm in Android service
   static const _dmsChannel = MethodChannel('com.example.okdriver/drowsiness');
 
   static const Map<String, String> _alertMessages = {
@@ -46,31 +44,38 @@ class VoiceAlertService {
         debugPrint('[TTS] Error: $msg');
       });
       _isInitialized = true;
-      debugPrint('[VoiceAlert] ✅ Initialized (native alarm, Flutter TTS)');
+      debugPrint('[VoiceAlert] ✅ Initialized');
     } catch (e) {
       debugPrint('[VoiceAlert] ❌ Init error: $e');
     }
   }
 
-  /// Triggers native alarm (2s) via Android service, then speaks TTS check-in.
-  /// The AssistantDialog is now launched natively as BackgroundAssistantActivity —
-  /// this method just handles Flutter-foreground TTS portion if needed.
-  Future<void> playAlarmThenCheckIn() async {
+  // =========================================================================
+  // ✅ NEW: playAlarmParallel — fire alarm + TTS check-in WITHOUT blocking UI
+  // Call this before showing the dialog so dialog opens instantly.
+  // =========================================================================
+  void playAlarmParallel() {
     if (!_isInitialized) return;
 
-    debugPrint('[VoiceAlert] === playAlarmThenCheckIn START ===');
+    debugPrint('[VoiceAlert] playAlarmParallel — non-blocking alarm start');
 
-    // 1. Trigger native alarm play via method channel
+    // Run alarm + TTS fully async — don't await, don't block caller
+    _runAlarmAndCheckIn();
+  }
+
+  Future<void> _runAlarmAndCheckIn() async {
+    // 1. Haptic immediately
+    await HapticFeedback.heavyImpact();
+
+    // 2. Start native alarm
     try {
       await _dmsChannel.invokeMethod('playAlarm');
+      debugPrint('[VoiceAlert] 🔔 Native alarm started');
     } catch (e) {
       debugPrint('[VoiceAlert] Native alarm invoke error (non-fatal): $e');
     }
 
-    // 2. Haptic feedback
-    await HapticFeedback.heavyImpact();
-
-    // 3. Wait 2s (alarm duration)
+    // 3. Wait 2s (alarm plays while dialog is already showing)
     await Future.delayed(const Duration(seconds: 2));
 
     // 4. Stop native alarm
@@ -80,15 +85,36 @@ class VoiceAlertService {
       debugPrint('[VoiceAlert] Stop alarm error (non-fatal): $e');
     }
 
-    // 5. Short pause
-    await Future.delayed(const Duration(milliseconds: 400));
-
-    // 6. TTS check-in
+    // 5. Short pause then TTS check-in
+    await Future.delayed(const Duration(milliseconds: 300));
     debugPrint('[VoiceAlert] 🗣 Speaking check-in...');
     await _speakAndWait(_alertMessages['check_in']!);
+  }
 
-    await Future.delayed(const Duration(milliseconds: 300));
-    debugPrint('[VoiceAlert] === playAlarmThenCheckIn DONE ===');
+  /// Original blocking version — kept for backward compat but no longer used
+  /// by the main flow. Use playAlarmParallel() instead.
+  Future<void> playAlarmThenCheckIn() async {
+    if (!_isInitialized) return;
+    debugPrint('[VoiceAlert] playAlarmThenCheckIn (blocking version)');
+
+    try {
+      await _dmsChannel.invokeMethod('playAlarm');
+    } catch (e) {
+      debugPrint('[VoiceAlert] Native alarm invoke error (non-fatal): $e');
+    }
+
+    await HapticFeedback.heavyImpact();
+    await Future.delayed(const Duration(seconds: 2));
+
+    try {
+      await _dmsChannel.invokeMethod('stopAlarm');
+    } catch (e) {
+      debugPrint('[VoiceAlert] Stop alarm error (non-fatal): $e');
+    }
+
+    await Future.delayed(const Duration(milliseconds: 400));
+    debugPrint('[VoiceAlert] 🗣 Speaking check-in...');
+    await _speakAndWait(_alertMessages['check_in']!);
   }
 
   Future<void> _speakAndWait(String text) async {
@@ -147,7 +173,6 @@ class VoiceAlertService {
     await speak(message);
     _lastAlertTime = DateTime.now();
     HapticFeedback.heavyImpact();
-    // Trigger native alarm once
     try {
       await _dmsChannel.invokeMethod('playAlarm');
     } catch (_) {}
@@ -189,7 +214,6 @@ class VoiceAlertService {
     } catch (_) {}
   }
 
-  /// startBipLoop: triggers native alarm through the service
   void startBipLoop() {
     if (!_isInitialized) return;
     try {

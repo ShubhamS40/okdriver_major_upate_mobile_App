@@ -95,9 +95,11 @@ class DrowsinessMonitoringService : LifecycleService() {
         @Volatile private var instance: DrowsinessMonitoringService? = null
 
         fun onAssistantClosed(driverResponded: Boolean) {
-            instance?.isAssistantShowing?.set(false)
-            instance?.cancelAssistantTimeout()
-            instance?.releaseWakeLock()
+            val service = instance
+            service?.isAssistantShowing?.set(false)
+            service?.cancelAssistantTimeout()
+            service?.releaseWakeLock()
+            service?.resumeDetectionAfterAssistant()
             Log.d(TAG, "✅ Assistant closed. responded=$driverResponded | ready for next alert")
         }
 
@@ -597,20 +599,36 @@ class DrowsinessMonitoringService : LifecycleService() {
             Request.Builder().url(wsUrl).build(),
             object : WebSocketListener() {
                 override fun onOpen(ws: WebSocket, r: okhttp3.Response) {
-                    Log.d(TAG, "✅ WS connected"); isWsConnected.set(true); isReconnecting.set(false)
+                    Log.d(TAG, "✅ WS connected")
+                    isWsConnected.set(true)
+                    isReconnecting.set(false)
                 }
+
                 override fun onMessage(ws: WebSocket, text: String) {
                     mainHandler.post { eventSink?.success(text) }
                     try {
                         val obj = JSONObject(text)
                         if (obj.optString("type") == "detection_result") handleDetectionResult(obj)
-                    } catch (_: Exception) {}
+                    } catch (_: Exception) {
+                    }
                 }
+
                 override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                    isWsConnected.set(false); scheduleReconnect()
+                    isWsConnected.set(false)
+                    if (!isAssistantShowing.get()) {
+                        scheduleReconnect()
+                    } else {
+                        Log.d(TAG, "WS closed while assistant showing — no reconnect")
+                    }
                 }
+
                 override fun onFailure(ws: WebSocket, t: Throwable, r: okhttp3.Response?) {
-                    isWsConnected.set(false); scheduleReconnect()
+                    isWsConnected.set(false)
+                    if (!isAssistantShowing.get()) {
+                        scheduleReconnect()
+                    } else {
+                        Log.d(TAG, "WS failure while assistant showing — no reconnect")
+                    }
                 }
             })
     }
@@ -631,11 +649,14 @@ class DrowsinessMonitoringService : LifecycleService() {
             drowsyEventCount++
             Log.d(TAG, "🚨 DROWSY event #$drowsyEventCount | isShowing=${isAssistantShowing.get()} | foreground=$isFlutterForeground")
 
-            playAlarmOnce()
-
             val canShow = isAssistantShowing.compareAndSet(false, true)
 
             if (canShow) {
+                // Pause detection / WebSocket while assistant is active
+                pauseDetectionForAssistant()
+
+                playAlarmOnce()
+
                 startAssistantTimeout()
                 acquireWakeLock()
 
@@ -716,6 +737,37 @@ class DrowsinessMonitoringService : LifecycleService() {
                 if (!ok) { isWsConnected.set(false); scheduleReconnect() }
             } catch (_: Exception) {}
         }, 1000L, 900L, TimeUnit.MILLISECONDS)
+    }
+
+    // =========================================================================
+    // Pause / resume detection around assistant conversation
+    // =========================================================================
+
+    private fun pauseDetectionForAssistant() {
+        Log.d(TAG, "⏸ Pausing detection/WebSocket for assistant")
+        try {
+            pingTimer?.cancel(); pingTimer = null
+            reconnectTimer?.cancel(); reconnectTimer = null
+            isReconnecting.set(false)
+            isWsConnected.set(false)
+            try {
+                webSocket?.close(1000, "assistant_active")
+            } catch (_: Exception) {
+            }
+            webSocket = null
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun resumeDetectionAfterAssistant() {
+        if (!isServiceRunning) return
+        if (isAssistantShowing.get()) {
+            Log.d(TAG, "resumeDetectionAfterAssistant: assistant still showing, skip")
+            return
+        }
+        Log.d(TAG, "▶ Resuming detection/WebSocket after assistant")
+        connectWebSocket()
+        startPingLoop()
     }
 
     override fun onBind(intent: Intent): IBinder? = super.onBind(intent)

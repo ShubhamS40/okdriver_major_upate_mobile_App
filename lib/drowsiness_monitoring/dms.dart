@@ -89,13 +89,9 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     if (mounted) setState(() => _isInitializing = false);
   }
 
-  // =========================================================================
-  // ✅ Permission request — Camera + Overlay (background alert ke liye)
-  // =========================================================================
   Future<bool> _requestAllPermissions() async {
     if (!Platform.isAndroid) return true;
 
-    // Step 1: Camera + Mic permission
     final statuses = await [
       Permission.camera,
       Permission.microphone,
@@ -115,103 +111,10 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       return false;
     }
 
-    // Step 2: Overlay permission check (background alert ke liye zaroori)
-    try {
-      final hasOverlay =
-          await _dmsChannel.invokeMethod<bool>('checkOverlayPermission') ??
-              false;
-
-      if (!hasOverlay && mounted) {
-        final shouldRequest = await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (ctx) => AlertDialog(
-            backgroundColor:
-                _isDarkMode ? const Color(0xFF1A1A1A) : Colors.white,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Row(
-              children: [
-                const Icon(Icons.warning_amber_rounded,
-                    color: Colors.orange, size: 28),
-                const SizedBox(width: 10),
-                Text(
-                  'Background Alert',
-                  style: TextStyle(
-                    color: _isDarkMode ? Colors.white : Colors.black87,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-              ],
-            ),
-            content: Text(
-              'Background mein drowsiness alert screen par dikhane ke liye "Display over other apps" permission chahiye.\n\nSettings mein OKDriver ko Allow karo.',
-              style: TextStyle(
-                color: _isDarkMode ? Colors.white70 : Colors.black54,
-                fontSize: 14,
-                height: 1.5,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Skip',
-                    style: TextStyle(color: Colors.grey, fontSize: 14)),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8)),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                ),
-                child: const Text(
-                  'Give Permission',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14),
-                ),
-              ),
-            ],
-          ),
-        );
-
-        if (shouldRequest == true) {
-          await _dmsChannel.invokeMethod('requestOverlayPermission');
-          // Settings se wapas aane ka wait karo
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text(
-                    'Settings mein OKDriver ko Allow karke wapas aao'),
-                backgroundColor: Colors.orange,
-                duration: const Duration(seconds: 4),
-                action: SnackBarAction(
-                  label: 'OK',
-                  textColor: Colors.white,
-                  onPressed: () {},
-                ),
-              ),
-            );
-          }
-          await Future.delayed(const Duration(seconds: 3));
-        }
-      }
-    } catch (e) {
-      debugPrint('[DMS] Overlay permission check error: $e');
-    }
-
     await _voiceAlertService.initialize();
     return true;
   }
 
-  // =========================================================================
-  // Detection message handler
-  // =========================================================================
   void _handleDetectionMessage(dynamic data) {
     try {
       final message = data is String ? json.decode(data) : data;
@@ -225,7 +128,6 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
           });
         }
 
-        // ✅ Foreground mein Flutter dialog, background mein WindowManager overlay
         if (_lifecycleState == AppLifecycleState.resumed &&
             !_isDialogShowing &&
             mounted) {
@@ -289,63 +191,43 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     }
   }
 
+  // =========================================================================
+  // ✅ FIXED: Dialog opens IMMEDIATELY + alarm plays in PARALLEL (no delay)
+  // =========================================================================
   void _showAssistantBottomSheet() {
     if (!mounted || _isDialogShowing) return;
     _isDialogShowing = true;
-    _voiceAlertService.stopBeep();
     _pulseController.stop();
 
-    debugPrint('[DMS] Flutter foreground: alarm → TTS → dialog...');
+    debugPrint(
+        '[DMS] _showAssistantBottomSheet — instant dialog + parallel alarm');
 
-    _voiceAlertService.playAlarmThenCheckIn().then((_) {
-      if (!mounted) {
-        _isDialogShowing = false;
-        return;
-      }
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        isDismissible: false,
-        enableDrag: false,
-        builder: (context) => AssistantDialog(
-          drowsyEvents: _drowsyEvents,
-          onDialogClosed: (responded) {
-            _isDialogShowing = false;
-            if (responded) {
-              setState(() {
-                _drowsyEvents = 0;
-                _lastDialogEvent = 0;
-              });
-            }
-          },
-        ),
-      ).then((_) => _isDialogShowing = false);
-    }).catchError((e) {
-      debugPrint('[DMS] playAlarmThenCheckIn error: $e');
-      _isDialogShowing = false;
-      if (!mounted) return;
-      _isDialogShowing = true;
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        isDismissible: false,
-        enableDrag: false,
-        builder: (context) => AssistantDialog(
-          drowsyEvents: _drowsyEvents,
-          onDialogClosed: (responded) {
-            _isDialogShowing = false;
-            if (responded) {
-              setState(() {
-                _drowsyEvents = 0;
-                _lastDialogEvent = 0;
-              });
-            }
-          },
-        ),
-      ).then((_) => _isDialogShowing = false);
-    });
+    // ✅ Step 1: Play alarm immediately in background (fire and forget)
+    _voiceAlertService.playAlarmParallel();
+
+    // ✅ Step 2: Show dialog INSTANTLY — no waiting for alarm or TTS
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (context) => AssistantDialog(
+        drowsyEvents: _drowsyEvents,
+        onDialogClosed: (responded) {
+          _isDialogShowing = false;
+          // Stop alarm when user responds
+          _voiceAlertService.stopBeep();
+          _dmsChannel.invokeMethod('assistantClosed');
+          if (responded) {
+            setState(() {
+              _drowsyEvents = 0;
+              _lastDialogEvent = 0;
+            });
+          }
+        },
+      ),
+    ).then((_) => _isDialogShowing = false);
   }
 
   void _toggleMonitoring() {
@@ -569,7 +451,10 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
             child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
               child: AspectRatio(
-                aspectRatio: 4 / 3,
+                // ✅ FIX BLACK BARS: Use 3/4 (portrait) instead of 4/3 (landscape)
+                // Front camera in portrait mode captures in 480x640 → ratio is 3:4.
+                // Using 4:3 was causing letterboxing (black bars on sides).
+                aspectRatio: 3 / 4,
                 child: CameraView(
                   onFrameCaptured: (frameData) {},
                   isMonitoring: _isMonitoring,

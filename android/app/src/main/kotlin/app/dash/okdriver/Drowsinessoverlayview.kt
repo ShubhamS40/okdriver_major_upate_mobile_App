@@ -51,6 +51,7 @@ class DrowsinessOverlayView(
     private var stt: SpeechRecognizer? = null
     private var isListening = false
     private var active = true
+    private var lastHeardText: String = ""
 
     // ── UI ────────────────────────────────────────────────────────────────────
     private lateinit var statusTv: TextView
@@ -244,6 +245,9 @@ class DrowsinessOverlayView(
     private fun startSTT() {
         if (isListening || !active) return
 
+        // Reset last heard text for this turn
+        lastHeardText = ""
+
         // Ensure mic permission is granted before starting background STT
         val hasMic = ContextCompat.checkSelfPermission(
             context,
@@ -281,15 +285,22 @@ class DrowsinessOverlayView(
             override fun onBufferReceived(b: ByteArray?) {}
             override fun onPartialResults(r: Bundle?) {
                 val p = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                if (!p.isNullOrEmpty()) post { responseTv.text = "\"$p\"" }
+                if (!p.isNullOrEmpty()) {
+                    lastHeardText = p
+                    post { responseTv.text = "\"$p\"" }
+                }
             }
             override fun onResults(r: Bundle?) {
                 isListening = false; setMicActive(false)
                 val text = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     ?.firstOrNull() ?: ""
-                Log.d(TAG, "STT: '$text'")
-                if (text.isNotEmpty()) sendToAI(text)
-                else setStatus("Tap mic or use buttons")
+                val chosen = if (text.isNotEmpty()) text else lastHeardText
+                Log.d(TAG, "STT: final='$text'  fallback='$lastHeardText'")
+                if (chosen.isNotEmpty()) {
+                    sendToAI(chosen)
+                } else {
+                    setStatus("Tap mic or use buttons")
+                }
             }
             override fun onError(code: Int) {
                 isListening = false; setMicActive(false)
@@ -341,10 +352,13 @@ class DrowsinessOverlayView(
         setResponse("You: \"$userMsg\"")
 
         val body = JSONObject().apply {
-            put("message", userMsg); put("userId", "1")
+            put("message", userMsg)
+            put("userId", "1")
             put("modelProvider", "together")
-            put("modelName", "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo")
-            put("speakerId", "1"); put("enablePremium", true)
+            // Align with Flutter + BackgroundAssistantActivity model
+            put("modelName", "meta-llama/Llama-3.2-3B-Instruct-Turbo")
+            put("speakerId", "1")
+            put("enablePremium", true)
         }.toString()
 
         http.newCall(

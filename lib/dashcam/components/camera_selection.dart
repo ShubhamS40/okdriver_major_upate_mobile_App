@@ -69,35 +69,7 @@ class _CameraSelectionScreenState extends State<CameraSelectionScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12.0),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          border: Border.all(color: Colors.orange.shade300),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              color: Colors.orange.shade700,
-                              size: 24,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Background Service feature coming soon',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.orange.shade900,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 30),
+                      const SizedBox(height: 16),
                       _buildCameraOption(
                         title: 'Front Camera',
                         icon: Icons.camera_front,

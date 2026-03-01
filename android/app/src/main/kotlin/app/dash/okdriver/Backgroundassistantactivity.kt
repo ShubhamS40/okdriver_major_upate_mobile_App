@@ -423,6 +423,10 @@ class BackgroundAssistantActivity : Activity() {
             updateStatus("Voice N/A — use buttons"); return
         }
 
+        // Reset last recognized text for this turn
+        recognizedText = ""
+        refreshResponseBubble()
+
         isListening = true
         updateStatus("🎤  Listening...")
         setMicHighlight(true)
@@ -449,11 +453,16 @@ class BackgroundAssistantActivity : Activity() {
             override fun onResults(r: Bundle?) {
                 isListening = false; setMicHighlight(false)
                 val finalText = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: ""
-                Log.d(TAG, "STT FINAL RESULT: \"$finalText\"")
-                if (finalText.isNotEmpty()) {
-                    recognizedText = finalText
+                Log.d(TAG, "STT FINAL RESULT: \"$finalText\" (recognizedSoFar=\"$recognizedText\")")
+
+                // Some devices only send partials and give empty final result.
+                // Fallback to last recognized text if final is empty.
+                val textToUse = if (finalText.isNotEmpty()) finalText else recognizedText
+
+                if (textToUse.isNotEmpty()) {
+                    recognizedText = textToUse
                     refreshResponseBubble()
-                    processResponse(finalText)
+                    processResponse(textToUse)
                 } else {
                     Log.w(TAG, "STT: empty result")
                     updateStatus("Tap mic or use buttons below")
