@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:async';
 
 class AssistantDialog extends StatefulWidget {
   final int drowsyEvents;
@@ -24,7 +25,8 @@ class _AssistantDialogState extends State<AssistantDialog>
     with SingleTickerProviderStateMixin {
   late stt.SpeechToText _speech;
   bool _isListening = false;
-  bool _hasMicPermission = false; // ✅ Track mic permission
+  bool _hasMicPermission = false;
+  bool _isSpeaking = false; // ✅ Track TTS state separately
   String _text = "";
   String _assistantResponse = "Driver, are you alright? Please respond.";
   final FlutterTts _flutterTts = FlutterTts();
@@ -34,6 +36,9 @@ class _AssistantDialogState extends State<AssistantDialog>
 
   bool _hasResponded = false;
   bool _conversationActive = true;
+  bool _isProcessing = false; // ✅ Prevent overlapping calls
+
+  Timer? _watchdogTimer; // ✅ Watchdog to restart if mic silently dies
 
   @override
   void initState() {
@@ -42,8 +47,13 @@ class _AssistantDialogState extends State<AssistantDialog>
 
     _flutterTts.setCompletionHandler(() {
       if (mounted && _conversationActive) {
-        _listen(); // Auto-listen after TTS
+        setState(() => _isSpeaking = false);
+        _startListeningLoop(); // ✅ Resume listening after TTS
       }
+    });
+
+    _flutterTts.setErrorHandler((msg) {
+      if (mounted) setState(() => _isSpeaking = false);
     });
 
     _animationController = AnimationController(
@@ -55,9 +65,6 @@ class _AssistantDialogState extends State<AssistantDialog>
     );
     _animationController.repeat(reverse: true);
 
-    // ✅ Check mic permission then start listening
-    // The TTS "Driver are you alright?" was already spoken BEFORE dialog opened
-    // So dialog should immediately start listening
     Future.delayed(const Duration(milliseconds: 300), () {
       if (mounted) _checkMicAndListen();
     });
@@ -66,28 +73,37 @@ class _AssistantDialogState extends State<AssistantDialog>
   @override
   void dispose() {
     _conversationActive = false;
+    _watchdogTimer?.cancel();
     _animationController.dispose();
     _flutterTts.stop();
     _speech.stop();
     super.dispose();
   }
 
-  // ✅ Check mic permission first, then listen
+  // ✅ Watchdog: if mic is supposed to be listening but STT silently died, restart it
+  void _startWatchdog() {
+    _watchdogTimer?.cancel();
+    _watchdogTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted || !_conversationActive || _isSpeaking || _isProcessing)
+        return;
+      debugPrint('[Watchdog] STT may have died — restarting');
+      _isListening = false;
+      _startListeningLoop();
+    });
+  }
+
   Future<void> _checkMicAndListen() async {
-    // Check current permission status
     var micStatus = await Permission.microphone.status;
 
     if (micStatus.isGranted) {
-      _hasMicPermission = true;
-      _listen();
+      if (mounted) setState(() => _hasMicPermission = true);
+      _startListeningLoop();
     } else if (micStatus.isDenied) {
-      // Request it
       micStatus = await Permission.microphone.request();
       if (mounted) setState(() => _hasMicPermission = micStatus.isGranted);
       if (micStatus.isGranted) {
-        _listen();
+        _startListeningLoop();
       } else {
-        // Show message — user must tap buttons instead
         if (mounted) {
           setState(() {
             _assistantResponse =
@@ -104,6 +120,51 @@ class _AssistantDialogState extends State<AssistantDialog>
         });
       }
     }
+  }
+
+  // ✅ Called when user manually taps mic button — force resets everything
+  Future<void> _forceRestartListening() async {
+    if (!mounted || _isSpeaking) return;
+
+    _watchdogTimer?.cancel();
+
+    // Hard stop any existing STT session
+    try {
+      await _speech.stop();
+    } catch (_) {}
+    try {
+      await _speech.cancel();
+    } catch (_) {}
+
+    if (mounted) setState(() => _isListening = false);
+
+    // Re-check mic permission in case it was revoked/granted
+    var micStatus = await Permission.microphone.status;
+    if (!micStatus.isGranted) {
+      micStatus = await Permission.microphone.request();
+    }
+
+    if (!mounted) return;
+    setState(() => _hasMicPermission = micStatus.isGranted);
+
+    if (micStatus.isGranted) {
+      // Reinitialize speech engine from scratch
+      _speech = stt.SpeechToText();
+      await Future.delayed(const Duration(milliseconds: 200));
+      if (mounted && _conversationActive) _listen();
+    } else {
+      setState(() {
+        _assistantResponse = "Mic permission denied. Enable in Settings.";
+      });
+    }
+  }
+
+  // ✅ Central loop: always keeps listening until user speaks or dialog closes
+  void _startListeningLoop() {
+    if (!mounted || !_conversationActive || _isSpeaking || _isProcessing)
+      return;
+    if (_isListening) return; // Already listening, do nothing
+    _listen();
   }
 
   Future<String> _sendToModel(String query) async {
@@ -136,47 +197,119 @@ class _AssistantDialogState extends State<AssistantDialog>
   }
 
   void _listen() async {
-    if (!_isListening && _conversationActive && mounted && _hasMicPermission) {
-      try {
-        bool available = await _speech.initialize(
-          onError: (error) {
-            debugPrint('[STT] Error: ${error.errorMsg}');
-            if (mounted) setState(() => _isListening = false);
-          },
-        );
+    if (!mounted || !_conversationActive || _isSpeaking || _isProcessing)
+      return;
+    if (_isListening) return;
 
-        if (available && mounted && _conversationActive) {
-          setState(() => _isListening = true);
-          _speech.listen(
-            onResult: (val) {
-              if (mounted) {
-                setState(() => _text = val.recognizedWords);
+    try {
+      bool available = await _speech.initialize(
+        onStatus: (status) {
+          debugPrint('[STT] Status: $status');
+          if (!mounted) return;
+
+          if (status == 'done' || status == 'notListening') {
+            if (mounted) setState(() => _isListening = false);
+            _watchdogTimer
+                ?.cancel(); // ✅ Cancel watchdog since status came back
+
+            // ✅ Immediately restart — no delay needed
+            if (_conversationActive && !_isSpeaking && !_isProcessing) {
+              _listen();
+            }
+          } else if (status == 'listening') {
+            if (mounted) setState(() => _isListening = true);
+            _startWatchdog(); // ✅ Start watchdog every time we confirm listening
+          }
+        },
+        onError: (error) {
+          debugPrint('[STT] Error: ${error.errorMsg}');
+          if (mounted) setState(() => _isListening = false);
+          _watchdogTimer?.cancel();
+
+          // ✅ Small delay only on error to avoid hammering the engine
+          if (_conversationActive && !_isSpeaking && !_isProcessing) {
+            Future.delayed(const Duration(milliseconds: 500), () {
+              if (mounted &&
+                  _conversationActive &&
+                  !_isSpeaking &&
+                  !_isProcessing) {
+                _listen();
               }
-              if (val.finalResult) {
-                if (mounted) setState(() => _isListening = false);
-                _speech.stop();
-                if (_text.isNotEmpty) _processResponse(_text);
+            });
+          }
+        },
+      );
+
+      if (!available || !mounted || !_conversationActive) return;
+
+      setState(() => _isListening = true);
+
+      _speech.listen(
+        onResult: (val) {
+          if (!mounted) return;
+
+          final words = val.recognizedWords.trim();
+          if (words.isNotEmpty) {
+            setState(() => _text = words);
+          }
+
+          if (val.finalResult) {
+            _watchdogTimer?.cancel();
+            setState(() => _isListening = false);
+            _speech.stop();
+
+            if (words.isNotEmpty) {
+              _processResponse(words); // ✅ Got speech — process it
+            } else {
+              // ✅ Nothing heard — restart immediately, no gap
+              if (_conversationActive && !_isSpeaking && !_isProcessing) {
+                _listen();
               }
-            },
-            listenFor: const Duration(seconds: 15),
-            pauseFor: const Duration(seconds: 3),
-          );
-        }
-      } catch (e) {
-        debugPrint('[STT] listen error: $e');
-        if (mounted) setState(() => _isListening = false);
+            }
+          }
+        },
+        listenFor: const Duration(minutes: 5), // ✅ Very long session
+        pauseFor: const Duration(
+            seconds: 8), // ✅ Wait 8s of silence before finalizing
+        cancelOnError: false, // ✅ Don't cancel on minor errors
+      );
+    } catch (e) {
+      debugPrint('[STT] listen error: $e');
+      if (mounted) setState(() => _isListening = false);
+
+      if (_conversationActive && !_isSpeaking && !_isProcessing) {
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted &&
+              _conversationActive &&
+              !_isSpeaking &&
+              !_isProcessing) {
+            _listen();
+          }
+        });
       }
     }
   }
 
   Future<void> _processResponse(String text) async {
-    if (!mounted) return;
-    setState(() => _hasResponded = true);
+    if (!mounted || _isProcessing) return;
+
+    setState(() {
+      _hasResponded = true;
+      _isProcessing = true;
+    });
 
     String response = await _sendToModel(text);
-    if (mounted) setState(() => _assistantResponse = response);
+
+    if (mounted) {
+      setState(() {
+        _assistantResponse = response;
+        _isProcessing = false;
+        _isSpeaking = true;
+      });
+    }
+
     await _speak(response);
-    // TTS completion handler auto-calls _listen() again
+    // TTS completion handler will restart listening
   }
 
   Future<void> _speak(String text) async {
@@ -190,6 +323,7 @@ class _AssistantDialogState extends State<AssistantDialog>
 
   void _stopConversation() {
     _conversationActive = false;
+    _watchdogTimer?.cancel();
     _speech.stop();
     _flutterTts.stop();
     if (mounted) {
@@ -239,15 +373,21 @@ class _AssistantDialogState extends State<AssistantDialog>
                       colors: [
                         _isListening
                             ? Colors.green.shade300
-                            : Colors.red.shade400,
+                            : (_isSpeaking
+                                ? Colors.blue.shade300
+                                : Colors.red.shade400),
                         _isListening
                             ? Colors.green.shade700
-                            : Colors.red.shade800,
+                            : (_isSpeaking
+                                ? Colors.blue.shade700
+                                : Colors.red.shade800),
                       ],
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: (_isListening ? Colors.green : Colors.red)
+                        color: (_isListening
+                                ? Colors.green
+                                : (_isSpeaking ? Colors.blue : Colors.red))
                             .withOpacity(0.5),
                         blurRadius: 25,
                         spreadRadius: 5,
@@ -272,13 +412,19 @@ class _AssistantDialogState extends State<AssistantDialog>
 
           // Status text
           Text(
-            _isListening
-                ? "🎤 Listening..."
-                : (_hasMicPermission
-                    ? "Tap mic or use buttons"
-                    : "Use buttons below"),
+            _isSpeaking
+                ? "🔊 Speaking..."
+                : (_isListening
+                    ? "🎤 Listening..."
+                    : (_isProcessing
+                        ? "⏳ Thinking..."
+                        : (_hasMicPermission
+                            ? "Tap mic or use buttons"
+                            : "Use buttons below"))),
             style: TextStyle(
-              color: _isListening ? Colors.green : Colors.white60,
+              color: _isListening
+                  ? Colors.green
+                  : (_isSpeaking ? Colors.blue.shade300 : Colors.white60),
               fontSize: 13,
               fontWeight: FontWeight.w500,
             ),
@@ -307,14 +453,12 @@ class _AssistantDialogState extends State<AssistantDialog>
 
           const SizedBox(height: 16),
 
-          // ✅ Mic button (if permission available) + quick response buttons
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Mic button
               if (_hasMicPermission)
                 GestureDetector(
-                  onTap: _isListening ? null : _listen,
+                  onTap: _isSpeaking ? null : _forceRestartListening,
                   child: Container(
                     width: 50,
                     height: 50,
@@ -335,8 +479,6 @@ class _AssistantDialogState extends State<AssistantDialog>
                     ),
                   ),
                 ),
-
-              // Quick response buttons
               if (!_hasResponded) ...[
                 _buildResponseButton("I'm fine", Colors.green,
                     () => _handleQuickResponse("I'm fine")),
@@ -349,7 +491,6 @@ class _AssistantDialogState extends State<AssistantDialog>
 
           const SizedBox(height: 16),
 
-          // Stop button
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(

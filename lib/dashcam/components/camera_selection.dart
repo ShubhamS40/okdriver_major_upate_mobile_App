@@ -85,7 +85,26 @@ class _CameraSelectionScreenState extends State<CameraSelectionScreen> {
                       _buildCameraOption(
                         title: 'Dual Camera (Coming Soon)',
                         icon: Icons.camera,
-                        onTap: () => _navigateToDashcam(CameraType.dual),
+                        onTap: () {
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16)),
+                              title: const Text('Coming Soon'),
+                              content: const Text(
+                                'Dual camera dashcam feature is coming soon.\n\n'
+                                'We are working hard to bring you the best experience.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('OK'),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),

@@ -28,6 +28,7 @@ class _DashcamScreenState extends State<DashcamScreen>
   // Default recording segment duration
   String _selectedDuration = '10m';
   String _storageOption = 'local';
+  bool _recordAudio = true; // mic mute/unmute toggle
   Timer? _recordingTimer;
   int _elapsedSeconds = 0;
 
@@ -88,6 +89,7 @@ class _DashcamScreenState extends State<DashcamScreen>
       await _recorderChannel.invokeMethod('startService', {
         'cameraType': widget.cameraType.toString().split('.').last,
         'segmentMinutes': _getDurationInMinutes(),
+        'recordAudio': _recordAudio,
       });
       setState(() {
         _isRecording = true;
@@ -205,7 +207,7 @@ class _DashcamScreenState extends State<DashcamScreen>
                       color: Colors.black,
                       child: const Center(
                         child: Text(
-                          'Dashcam ready\nRecord button dabao start karne ke liye',
+                          'Dashcam ready \n Click start to begin recording',
                           style: TextStyle(color: Colors.white),
                           textAlign: TextAlign.center,
                         ),
@@ -302,16 +304,71 @@ class _DashcamScreenState extends State<DashcamScreen>
             padding: const EdgeInsets.all(16.0),
             color: Colors.grey[200],
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                IconButton(
-                  icon: Icon(
-                    _isRecording ? Icons.stop : Icons.fiber_manual_record,
-                    color: _isRecording ? Colors.black : Colors.red,
-                    size: 36,
+                // Start / Stop recording button
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _toggleRecording,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isRecording
+                          ? Colors.red.shade600
+                          : Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    icon: Icon(
+                      _isRecording ? Icons.stop : Icons.fiber_manual_record,
+                      size: 24,
+                    ),
+                    label: Text(
+                      _isRecording ? 'Stop Recording' : 'Start Recording',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                  onPressed: _toggleRecording,
-                  tooltip: _isRecording ? 'Stop Recording' : 'Start Recording',
+                ),
+                const SizedBox(width: 12),
+                // Mic mute/unmute toggle
+                Tooltip(
+                  message: _recordAudio
+                      ? 'Tap to mute audio (video only)'
+                      : 'Tap to record audio with video',
+                  child: InkWell(
+                    onTap: () {
+                      setState(() {
+                        _recordAudio = !_recordAudio;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(_recordAudio
+                              ? 'Audio recording enabled'
+                              : 'Audio muted — only video will be saved'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(40),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _recordAudio
+                            ? Colors.black.withOpacity(0.8)
+                            : Colors.grey.shade400,
+                      ),
+                      child: Icon(
+                        _recordAudio ? Icons.mic : Icons.mic_off,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),

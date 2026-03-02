@@ -45,6 +45,10 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
   int _lastDialogEvent = 0;
   bool _isDialogShowing = false;
 
+  // ✅ Cooldown: after dialog closes, ignore detections for this many seconds
+  static const int _dialogCooldownSeconds = 10;
+  DateTime? _lastDialogClosedAt;
+
   AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
 
   @override
@@ -120,6 +124,17 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       final message = data is String ? json.decode(data) : data;
 
       if (message['type'] == 'show_dialog') {
+        // ✅ Check cooldown — don't reopen dialog too soon after it was closed
+        if (_lastDialogClosedAt != null) {
+          final elapsed =
+              DateTime.now().difference(_lastDialogClosedAt!).inSeconds;
+          if (elapsed < _dialogCooldownSeconds) {
+            debugPrint(
+                '[DMS] show_dialog skipped — cooldown active (${elapsed}s < ${_dialogCooldownSeconds}s)');
+            return;
+          }
+        }
+
         final events = message['drowsy_events'] ?? _drowsyEvents;
         if (mounted) {
           setState(() {
@@ -191,9 +206,6 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     }
   }
 
-  // =========================================================================
-  // ✅ FIXED: Dialog opens IMMEDIATELY + alarm plays in PARALLEL (no delay)
-  // =========================================================================
   void _showAssistantBottomSheet() {
     if (!mounted || _isDialogShowing) return;
     _isDialogShowing = true;
@@ -202,10 +214,8 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     debugPrint(
         '[DMS] _showAssistantBottomSheet — instant dialog + parallel alarm');
 
-    // ✅ Step 1: Play alarm immediately in background (fire and forget)
     _voiceAlertService.playAlarmParallel();
 
-    // ✅ Step 2: Show dialog INSTANTLY — no waiting for alarm or TTS
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -216,18 +226,45 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
         drowsyEvents: _drowsyEvents,
         onDialogClosed: (responded) {
           _isDialogShowing = false;
-          // Stop alarm when user responds
           _voiceAlertService.stopBeep();
-          _dmsChannel.invokeMethod('assistantClosed');
-          if (responded) {
+
+          // ✅ Record when dialog was closed for cooldown
+          _lastDialogClosedAt = DateTime.now();
+
+          // ✅ Reset ALL counters on Flutter side
+          if (mounted) {
             setState(() {
               _drowsyEvents = 0;
               _lastDialogEvent = 0;
+              _localDrowsyFrames = 0;
+              // ✅ Also zero out metrics display so progress bar resets visually
+              if (_metrics != null) {
+                _metrics = Map<String, dynamic>.from(_metrics!)
+                  ..['drowsy_frames'] = 0
+                  ..['yawning_frames'] = 0
+                  ..['drowsy_events'] = 0;
+              }
             });
           }
+
+          // ✅ Tell native Android to reset its drowsy_frames counter too
+          _dmsChannel.invokeMethod('resetDrowsyCounter').catchError((e) {
+            debugPrint('[DMS] resetDrowsyCounter error (non-fatal): $e');
+          });
+
+          // ✅ Also call assistantClosed as before
+          _dmsChannel.invokeMethod('assistantClosed').catchError((e) {
+            debugPrint('[DMS] assistantClosed error (non-fatal): $e');
+          });
         },
       ),
-    ).then((_) => _isDialogShowing = false);
+    ).then((_) {
+      // Safety fallback if sheet was dismissed some other way
+      if (_isDialogShowing) {
+        _isDialogShowing = false;
+        _lastDialogClosedAt = DateTime.now();
+      }
+    });
   }
 
   void _toggleMonitoring() {
@@ -252,6 +289,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       _metrics = null;
       _isConnected = false;
       _isDialogShowing = false;
+      _lastDialogClosedAt = null;
     });
 
     try {
@@ -290,6 +328,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       _metrics = null;
       _isConnected = false;
       _isDialogShowing = false;
+      _lastDialogClosedAt = null;
     });
     try {
       _framesSub?.cancel();
@@ -305,6 +344,11 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       _drowsyEvents = 0;
       _lastDialogEvent = 0;
       _localDrowsyFrames = 0;
+      _lastDialogClosedAt = null;
+    });
+    // ✅ Also reset native counter on manual reset
+    _dmsChannel.invokeMethod('resetDrowsyCounter').catchError((e) {
+      debugPrint('[DMS] resetDrowsyCounter error (non-fatal): $e');
     });
   }
 
@@ -451,9 +495,6 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
             child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
               child: AspectRatio(
-                // ✅ FIX BLACK BARS: Use 3/4 (portrait) instead of 4/3 (landscape)
-                // Front camera in portrait mode captures in 480x640 → ratio is 3:4.
-                // Using 4:3 was causing letterboxing (black bars on sides).
                 aspectRatio: 3 / 4,
                 child: CameraView(
                   onFrameCaptured: (frameData) {},

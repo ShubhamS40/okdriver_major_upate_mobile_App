@@ -259,18 +259,33 @@ class _OkDriverVirtualAssistantScreenState
             // ignore: avoid_print
             print('[OkDriver] Recognized: ${result.recognizedWords}');
             // Handle final result here
-            if (result.finalResult && result.recognizedWords.isNotEmpty) {
-              setState(() {
-                _isListening = false;
-                _phase = AssistantPhase.processing;
-              });
-              _speech.stop();
-              _sendMessageToBackend(result.recognizedWords);
+            if (result.finalResult) {
+              final spoken = result.recognizedWords.trim();
+              if (spoken.isNotEmpty) {
+                setState(() {
+                  _isListening = false;
+                  _phase = AssistantPhase.processing;
+                });
+                _speech.stop();
+                _sendMessageToBackend(spoken);
+              } else {
+                // No speech captured – immediately listen again so mic
+                // keeps waiting until user actually speaks.
+                setState(() {
+                  _isListening = false;
+                  _phase = AssistantPhase.listening;
+                });
+                _speech.stop();
+                Future.delayed(const Duration(milliseconds: 200), _listen);
+              }
             }
           },
-          listenFor: const Duration(seconds: 10), // Auto-stop after 10 seconds
+          // Keep session alive longer and allow short pauses while speaking.
+          listenFor: const Duration(
+              seconds: 60), // Up to 60 seconds before hard timeout
           pauseFor: const Duration(
-              seconds: 2), // Auto-stop after 2 seconds of silence
+              seconds:
+                  6), // Up to 6 seconds of silence before considering input done
           localeId:
               "en_IN", // English (India) for better recognition of Indian accent
         );

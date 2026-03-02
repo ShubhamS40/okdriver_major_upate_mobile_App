@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:okdriver/bottom_navigation_bar/bottom_navigation_bar.dart';
+import 'package:okdriver/permissionscreen/permissionscreen.dart';
 import 'package:okdriver/driver_auth_screen/driver_registration_screen.dart';
 import 'package:okdriver/theme/theme_provider.dart';
 import 'package:okdriver/service/usersession_service.dart';
@@ -407,12 +408,12 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                   ),
                 );
               } else {
-                print('Navigating to home screen for existing user');
+                print('Navigating to permission screen for existing user');
                 Navigator.pushReplacement(
                   context,
                   PageRouteBuilder(
                     pageBuilder: (context, animation, secondaryAnimation) =>
-                        BottomNavScreen(),
+                        const PermissionScreen(),
                     transitionsBuilder:
                         (context, animation, secondaryAnimation, child) {
                       return SlideTransition(

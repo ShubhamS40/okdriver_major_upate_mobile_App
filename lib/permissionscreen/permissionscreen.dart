@@ -1,8 +1,7 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:okdriver/role_selection/role_selection.dart';
+import 'package:okdriver/bottom_navigation_bar/bottom_navigation_bar.dart';
 
 class PermissionScreen extends StatefulWidget {
   const PermissionScreen({Key? key}) : super(key: key);
@@ -17,6 +16,8 @@ class _PermissionScreenState extends State<PermissionScreen>
   late Animation<double> _fadeAnimation;
 
   PermissionStatus _cameraStatus = PermissionStatus.denied;
+  PermissionStatus _micStatus = PermissionStatus.denied;
+  PermissionStatus _notificationStatus = PermissionStatus.denied;
   bool _isRequesting = false;
 
   @override
@@ -25,14 +26,14 @@ class _PermissionScreenState extends State<PermissionScreen>
     WidgetsBinding.instance.addObserver(this);
     _initAnimation();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkCameraPermission();
+      _refreshPermissions();
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkCameraPermission();
+      _refreshPermissions();
     }
   }
 
@@ -48,16 +49,55 @@ class _PermissionScreenState extends State<PermissionScreen>
     _controller.forward();
   }
 
-  Future<void> _checkCameraPermission() async {
+  Future<void> _refreshPermissions() async {
     try {
-      final status = await Permission.camera.status;
-      debugPrint('📷 Current camera status: $status');
-
+      final camera = await Permission.camera.status;
+      final mic = await Permission.microphone.status;
+      final notif = await Permission.notification.status;
       if (mounted) {
-        setState(() => _cameraStatus = status);
+        setState(() {
+          _cameraStatus = camera;
+          _micStatus = mic;
+          _notificationStatus = notif;
+        });
       }
     } catch (e) {
-      debugPrint('❌ Error checking camera permission: $e');
+      debugPrint('❌ Error checking permissions: $e');
+    }
+  }
+
+  bool get _allGranted =>
+      _cameraStatus.isGranted &&
+      _micStatus.isGranted &&
+      _notificationStatus.isGranted;
+
+  Future<void> _requestAll() async {
+    if (_isRequesting) return;
+    HapticFeedback.lightImpact();
+    setState(() => _isRequesting = true);
+
+    try {
+      await Permission.camera.request();
+      await Permission.microphone.request();
+      await Permission.notification.request();
+      await _refreshPermissions();
+
+      if (_allGranted) {
+        HapticFeedback.mediumImpact();
+        _goNext();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content:
+                Text('Please allow all important permissions to continue.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRequesting = false);
+      }
     }
   }
 
@@ -69,8 +109,6 @@ class _PermissionScreenState extends State<PermissionScreen>
     setState(() => _isRequesting = true);
 
     try {
-      debugPrint('📷 Requesting camera permission...');
-
       final status = await Permission.camera.request();
 
       debugPrint('📷 Permission result: $status');
@@ -86,7 +124,7 @@ class _PermissionScreenState extends State<PermissionScreen>
 
         if (status.isGranted) {
           HapticFeedback.mediumImpact();
-          _showSuccessDialog();
+          _refreshPermissions();
         } else if (status.isPermanentlyDenied) {
           _showSettingsDialog();
         } else if (status.isDenied) {
@@ -151,9 +189,8 @@ class _PermissionScreenState extends State<PermissionScreen>
                 ),
                 onPressed: () {
                   Navigator.pop(context);
-                  _goNext();
                 },
-                child: const Text('Continue'),
+                child: const Text('OK'),
               ),
             )
           ],
@@ -196,7 +233,7 @@ class _PermissionScreenState extends State<PermissionScreen>
   void _goNext() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
+      MaterialPageRoute(builder: (context) => BottomNavScreen()),
     );
   }
 
@@ -209,11 +246,8 @@ class _PermissionScreenState extends State<PermissionScreen>
 
   @override
   Widget build(BuildContext context) {
-    final isGranted = _cameraStatus.isGranted;
-    final isPermanentlyDenied = _cameraStatus.isPermanentlyDenied;
-
     return Scaffold(
-      backgroundColor: const Color(0xFFF9F9F9),
+      backgroundColor: Colors.black,
       body: SafeArea(
         child: FadeTransition(
           opacity: _fadeAnimation,
@@ -223,102 +257,111 @@ class _PermissionScreenState extends State<PermissionScreen>
               children: [
                 const SizedBox(height: 30),
 
-                /// ICON
+                // Brand / logo style header
                 Container(
                   width: 110,
                   height: 110,
                   decoration: BoxDecoration(
-                    color: isGranted ? Colors.green : Colors.black,
+                    gradient: const RadialGradient(
+                      colors: [
+                        Colors.white24,
+                        Colors.white10,
+                        Colors.transparent
+                      ],
+                      stops: [0, 0.7, 1],
+                    ),
                     shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white24, width: 2),
                   ),
-                  child: Icon(
-                    isGranted ? Icons.check : Icons.camera_alt,
-                    size: 50,
+                  child: const Icon(
+                    Icons.shield_outlined,
+                    size: 52,
                     color: Colors.white,
                   ),
                 ),
 
                 const SizedBox(height: 30),
 
-                /// TITLE
+                // TITLE
                 const Text(
-                  'Camera Permission',
+                  'Allow OK Driver Permissions',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 28,
+                    fontSize: 26,
                     fontWeight: FontWeight.bold,
+                    color: Colors.white,
                   ),
                 ),
 
                 const SizedBox(height: 12),
 
-                /// DESCRIPTION
+                // SUBTITLE
                 const Text(
-                  'OK Driver requires camera access to record dashcam videos '
-                  'and capture trip evidence.',
+                  'We use these permissions to keep your trips safe, record dashcam video and send important alerts.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.grey,
+                    fontSize: 14,
+                    color: Colors.white70,
                     height: 1.5,
                   ),
                 ),
 
-                const SizedBox(height: 40),
+                const SizedBox(height: 32),
 
-                /// STATUS CARD
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isGranted ? Colors.green : Colors.grey.shade300,
-                      width: isGranted ? 2 : 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        isGranted ? Icons.verified : Icons.error_outline,
-                        color: isGranted ? Colors.green : Colors.grey,
-                        size: 28,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          isGranted
-                              ? 'Camera permission granted ✓'
-                              : isPermanentlyDenied
-                                  ? 'Camera permission denied'
-                                  : 'Camera permission not granted',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: isGranted ? Colors.green : Colors.grey,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                // PERMISSION CARDS
+                _buildPermissionTile(
+                  icon: Icons.camera_alt_outlined,
+                  title: 'Camera',
+                  description:
+                      'Required for dashcam recording and drowsiness monitoring.',
+                  status: _cameraStatus,
+                  onTap: _requestCameraPermission,
+                ),
+                const SizedBox(height: 12),
+                _buildPermissionTile(
+                  icon: Icons.mic_none_outlined,
+                  title: 'Microphone',
+                  description:
+                      'Required for assistant voice control and alerts.',
+                  status: _micStatus,
+                  onTap: () async {
+                    await Permission.microphone.request();
+                    await _refreshPermissions();
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildPermissionTile(
+                  icon: Icons.notifications_active_outlined,
+                  title: 'Notifications',
+                  description: 'For drowsiness alerts and important updates.',
+                  status: _notificationStatus,
+                  onTap: () async {
+                    await Permission.notification.request();
+                    await _refreshPermissions();
+                  },
                 ),
 
                 const Spacer(),
 
-                /// MAIN BUTTON
+                // MAIN BUTTON
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: _isRequesting
                         ? null
-                        : isPermanentlyDenied
-                            ? () async => await openAppSettings()
-                            : isGranted
-                                ? _goNext
-                                : _requestCameraPermission,
+                        : () async {
+                            if (_allGranted) {
+                              _goNext();
+                            } else {
+                              await _requestAll();
+                            }
+                          },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isGranted ? Colors.green : Colors.black,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: Colors.grey.shade400,
+                      backgroundColor: _allGranted
+                          ? Colors.greenAccent.shade400
+                          : Colors.white,
+                      foregroundColor: Colors.black,
+                      disabledBackgroundColor: Colors.grey.shade800,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -334,36 +377,92 @@ class _PermissionScreenState extends State<PermissionScreen>
                             ),
                           )
                         : Text(
-                            isPermanentlyDenied
-                                ? 'Open Settings'
-                                : isGranted
-                                    ? 'Continue'
-                                    : 'Enable Camera',
+                            _allGranted
+                                ? 'Continue to OK Driver'
+                                : 'Allow All Permissions',
                             style: const TextStyle(
                               fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                   ),
                 ),
-
-                const SizedBox(height: 12),
-
-                /// SKIP BUTTON
-                if (!isGranted)
-                  TextButton(
-                    onPressed: _goNext,
-                    child: const Text(
-                      'Skip for now',
-                      style: TextStyle(
-                        color: Colors.grey,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPermissionTile({
+    required IconData icon,
+    required String title,
+    required String description,
+    required PermissionStatus status,
+    required VoidCallback onTap,
+  }) {
+    final granted = status.isGranted;
+    final permanentlyDenied = status.isPermanentlyDenied;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: granted ? Colors.greenAccent.shade400 : Colors.white12,
+            width: granted ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              granted ? 'Allowed' : (permanentlyDenied ? 'Settings' : 'Allow'),
+              style: TextStyle(
+                color: granted ? Colors.greenAccent.shade400 : Colors.white70,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );

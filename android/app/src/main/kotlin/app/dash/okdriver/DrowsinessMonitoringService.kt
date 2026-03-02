@@ -73,11 +73,11 @@ class DrowsinessMonitoringService : LifecycleService() {
     private val isAlarmReady = AtomicBoolean(false)
     private val isAlarmPlaying = AtomicBoolean(false)
 
-    // ✅ WindowManager Overlay — Unisoc background Activity block ka solution
     private var overlayView: DrowsinessOverlayView? = null
     private var windowManager: WindowManager? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
+    // ✅ Single source of truth — reset karna zaruri hai jab bhi dialog close ho
     private var drowsyEventCount = 0
 
     @Volatile private var isFlutterForeground = true
@@ -94,13 +94,16 @@ class DrowsinessMonitoringService : LifecycleService() {
         @Volatile var currentPreviewView: PreviewView? = null
         @Volatile private var instance: DrowsinessMonitoringService? = null
 
+        // ✅ Overlay ya BackgroundAssistantActivity dono is function ko call karte hain
         fun onAssistantClosed(driverResponded: Boolean) {
-            val service = instance
-            service?.isAssistantShowing?.set(false)
-            service?.cancelAssistantTimeout()
-            service?.releaseWakeLock()
-            service?.resumeDetectionAfterAssistant()
-            Log.d(TAG, "✅ Assistant closed. responded=$driverResponded | ready for next alert")
+            val service = instance ?: return
+            // ✅ Full reset — drowsy count + flags
+            service.drowsyEventCount = 0
+            service.isAssistantShowing.set(false)
+            service.cancelAssistantTimeout()
+            service.releaseWakeLock()
+            service.resumeDetectionAfterAssistant()
+            Log.d(TAG, "✅ onAssistantClosed — drowsyEventCount=0, responded=$driverResponded")
         }
 
         private const val TAG = "DMS_Service"
@@ -121,6 +124,7 @@ class DrowsinessMonitoringService : LifecycleService() {
         ensureForeground()
 
         when (intent?.action) {
+
             "ACTION_UPDATE_VISIBILITY" -> {
                 val visible = intent.getBooleanExtra("isVisible", true)
                 isFlutterForeground = visible
@@ -131,12 +135,34 @@ class DrowsinessMonitoringService : LifecycleService() {
                     rebindCamera(needPreview)
                 }
             }
+
             "ACTION_REBIND_PREVIEW" -> {
                 if (isCameraInitialized.get()) rebindCamera(true)
             }
+
             "ACTION_PLAY_ALARM" -> playAlarmOnce()
+
             "ACTION_STOP_ALARM" -> stopAlarm()
-            "ACTION_ASSISTANT_CLOSED" -> onAssistantClosed(true)
+
+            // ✅ FIXED: Flutter dialog "I'm Awake — Close" button → full reset
+            "ACTION_ASSISTANT_CLOSED" -> {
+                drowsyEventCount = 0
+                isAssistantShowing.set(false)
+                cancelAssistantTimeout()
+                releaseWakeLock()
+                dismissOverlay()
+                resumeDetectionAfterAssistant()
+                Log.d(TAG, "✅ ACTION_ASSISTANT_CLOSED — drowsyEventCount=0, detection resumed")
+            }
+
+            // ✅ NEW: Flutter onDialogClosed callback se explicit counter reset
+            "ACTION_RESET_DROWSY_COUNTER" -> {
+                drowsyEventCount = 0
+                isAssistantShowing.set(false)
+                cancelAssistantTimeout()
+                Log.d(TAG, "✅ ACTION_RESET_DROWSY_COUNTER — drowsyEventCount=0, isAssistantShowing=false")
+            }
+
             else -> {
                 if (!isServiceRunning) {
                     Log.d(TAG, "DMS service starting")
@@ -153,7 +179,8 @@ class DrowsinessMonitoringService : LifecycleService() {
 
                     if (!hasCamera) {
                         Log.e(TAG, "No camera permission")
-                        isServiceRunning = false; stopSelf()
+                        isServiceRunning = false
+                        stopSelf()
                         return Service.START_NOT_STICKY
                     }
 
@@ -181,19 +208,23 @@ class DrowsinessMonitoringService : LifecycleService() {
         lastBindWasWithPreview = null
         instance = null
         backgroundExecutor.shutdownNow()
-        pingTimer?.cancel(); reconnectTimer?.cancel()
+        pingTimer?.cancel()
+        reconnectTimer?.cancel()
         isWsConnected.set(false)
         try { webSocket?.close(1000, "stopped") } catch (_: Exception) {}
         webSocket = null
-        wsClient?.dispatcher?.executorService?.shutdown(); wsClient = null
+        wsClient?.dispatcher?.executorService?.shutdown()
+        wsClient = null
         stopAlarm()
-        alarmPlayer?.release(); alarmPlayer = null; isAlarmReady.set(false)
+        alarmPlayer?.release()
+        alarmPlayer = null
+        isAlarmReady.set(false)
         cameraProvider?.unbindAll()
         super.onDestroy()
     }
 
     // =========================================================================
-    // ✅ KEY: WindowManager Overlay — background Activity block bypass
+    // ✅ WindowManager Overlay
     // =========================================================================
 
     private fun canDrawOverlay(): Boolean {
@@ -209,9 +240,7 @@ class DrowsinessMonitoringService : LifecycleService() {
             return
         }
 
-        // Dismiss existing overlay agar ho
         dismissOverlay()
-
         Log.d(TAG, "✅ Showing WindowManager overlay")
 
         mainHandler.post {
@@ -221,7 +250,7 @@ class DrowsinessMonitoringService : LifecycleService() {
                     drowsyEvents = drowsyEventCount,
                     onDismiss = {
                         dismissOverlay()
-                        onAssistantClosed(true)
+                        onAssistantClosed(true) // ✅ Yahan bhi full reset hoga
                     }
                 )
 
@@ -232,23 +261,6 @@ class DrowsinessMonitoringService : LifecycleService() {
                     WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
                 }
 
-                val params = WindowManager.LayoutParams(
-                    WindowManager.LayoutParams.MATCH_PARENT,
-                    WindowManager.LayoutParams.WRAP_CONTENT,
-                    type,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD,
-                    PixelFormat.TRANSLUCENT
-                ).apply {
-                    gravity = Gravity.BOTTOM
-                }
-
-                // FLAG_NOT_FOCUSABLE hatao agar touch chahiye
-                // Par overlay touch handle karta hai khud
                 val focusableParams = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.WRAP_CONTENT,
@@ -268,7 +280,6 @@ class DrowsinessMonitoringService : LifecycleService() {
                 Log.d(TAG, "✅ Overlay added to WindowManager")
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Overlay add failed: ${e.message}")
-                // Fallback: notification
                 showAssistantViaNotification()
             }
         }
@@ -281,7 +292,6 @@ class DrowsinessMonitoringService : LifecycleService() {
                 v.cleanup()
                 windowManager?.removeView(v)
                 overlayView = null
-                // Also dismiss notification if showing
                 val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 mgr.cancel(ASSISTANT_NOTIF_ID)
                 Log.d(TAG, "✅ Overlay dismissed")
@@ -313,7 +323,7 @@ class DrowsinessMonitoringService : LifecycleService() {
         }
     }
 
-    private fun releaseWakeLock() {
+    internal fun releaseWakeLock() {
         try {
             if (wakeLock?.isHeld == true) wakeLock?.release()
         } catch (_: Exception) {}
@@ -324,28 +334,31 @@ class DrowsinessMonitoringService : LifecycleService() {
     // Assistant timeout
     // =========================================================================
 
-    private fun startAssistantTimeout() {
+    internal fun startAssistantTimeout() {
         cancelAssistantTimeout()
         assistantTimeoutTimer = Timer()
         assistantTimeoutTimer?.schedule(object : TimerTask() {
             override fun run() {
                 if (isAssistantShowing.get()) {
-                    Log.w(TAG, "⚠️ Assistant timeout — reset")
+                    Log.w(TAG, "⚠️ Assistant timeout — full reset")
+                    // ✅ Timeout par bhi counter reset
+                    drowsyEventCount = 0
                     isAssistantShowing.set(false)
                     releaseWakeLock()
                     dismissOverlay()
+                    resumeDetectionAfterAssistant()
                 }
             }
         }, ASSISTANT_TIMEOUT_MS)
     }
 
-    private fun cancelAssistantTimeout() {
+    internal fun cancelAssistantTimeout() {
         assistantTimeoutTimer?.cancel()
         assistantTimeoutTimer = null
     }
 
     // =========================================================================
-    // Notifications (foreground + alert)
+    // Notifications
     // =========================================================================
 
     private fun ensureForeground() {
@@ -395,10 +408,8 @@ class DrowsinessMonitoringService : LifecycleService() {
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setOngoing(true).build()
 
-    // Notification fallback (agar overlay permission nahi)
     private fun showAssistantViaNotification() {
         val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val ch = NotificationChannel(
                 ASSISTANT_CHANNEL_ID, "Drowsiness Alert", NotificationManager.IMPORTANCE_HIGH
@@ -408,7 +419,6 @@ class DrowsinessMonitoringService : LifecycleService() {
             }
             mgr.createNotificationChannel(ch)
         }
-
         val activityIntent = Intent(this, BackgroundAssistantActivity::class.java).apply {
             putExtra("drowsy_events", drowsyEventCount)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -417,11 +427,10 @@ class DrowsinessMonitoringService : LifecycleService() {
             this, ASSISTANT_NOTIF_ID, activityIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
         val notif = NotificationCompat.Builder(this, ASSISTANT_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle("⚠️ Drowsiness Detected!")
-            .setContentText("Tap to respond — Driver, are you awake?")
+            .setContentTitle("Drowsiness Detected!")
+            .setContentText("Tap to talk with assistant ")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -430,10 +439,8 @@ class DrowsinessMonitoringService : LifecycleService() {
             .setContentIntent(pi)
             .setSound(null).setVibrate(null)
             .build()
-
         mgr.notify(ASSISTANT_NOTIF_ID, notif)
         Log.d(TAG, "✅ Fallback notification sent")
-
         try { startActivity(activityIntent) } catch (_: Exception) {}
     }
 
@@ -444,7 +451,9 @@ class DrowsinessMonitoringService : LifecycleService() {
     private fun initAlarmPlayer() {
         mainHandler.post {
             try {
-                alarmPlayer?.release(); alarmPlayer = null; isAlarmReady.set(false)
+                alarmPlayer?.release()
+                alarmPlayer = null
+                isAlarmReady.set(false)
                 val resId = resources.getIdentifier("alarm", "raw", packageName)
                 if (resId == 0) { Log.e(TAG, "❌ res/raw/alarm not found!"); return@post }
                 val mp = MediaPlayer.create(this, resId) ?: return@post
@@ -458,7 +467,8 @@ class DrowsinessMonitoringService : LifecycleService() {
                 val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
                 am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0)
                 mp.setOnCompletionListener { isAlarmPlaying.set(false) }
-                alarmPlayer = mp; isAlarmReady.set(true)
+                alarmPlayer = mp
+                isAlarmReady.set(true)
                 Log.d(TAG, "✅ Alarm loaded")
             } catch (e: Exception) { Log.e(TAG, "initAlarmPlayer: ${e.message}") }
         }
@@ -471,7 +481,8 @@ class DrowsinessMonitoringService : LifecycleService() {
                 val mp = alarmPlayer
                 if (mp != null && isAlarmReady.get()) {
                     if (mp.isPlaying) return@post
-                    mp.seekTo(0); mp.start()
+                    mp.seekTo(0)
+                    mp.start()
                     isAlarmPlaying.set(true)
                     Log.d(TAG, "🔊 Alarm PLAYING")
                 } else {
@@ -479,7 +490,9 @@ class DrowsinessMonitoringService : LifecycleService() {
                 }
                 vibrate()
             } catch (e: Exception) {
-                vibrate(); isAlarmPlaying.set(false); initAlarmPlayer()
+                vibrate()
+                isAlarmPlaying.set(false)
+                initAlarmPlayer()
             }
         }
     }
@@ -529,7 +542,8 @@ class DrowsinessMonitoringService : LifecycleService() {
                 Log.d(TAG, "✅ Camera initialized")
             } catch (e: Exception) {
                 Log.e(TAG, "Camera init failed: ${e.message}")
-                isServiceRunning = false; stopSelf()
+                isServiceRunning = false
+                stopSelf()
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -540,8 +554,10 @@ class DrowsinessMonitoringService : LifecycleService() {
                 val provider = cameraProvider ?: return@execute
                 val analysis = imageAnalysis ?: return@execute
                 if (lastBindWasWithPreview == withPreview) return@execute
-                val selector = CameraSelector.Builder().requireLensFacing(CameraSelector.LENS_FACING_FRONT).build()
-                provider.unbindAll(); previewUseCase = null
+                val selector = CameraSelector.Builder()
+                    .requireLensFacing(CameraSelector.LENS_FACING_FRONT).build()
+                provider.unbindAll()
+                previewUseCase = null
                 if (withPreview && currentPreviewView != null) {
                     previewUseCase = Preview.Builder().build().also {
                         it.setSurfaceProvider(currentPreviewView!!.surfaceProvider)
@@ -603,40 +619,28 @@ class DrowsinessMonitoringService : LifecycleService() {
                     isWsConnected.set(true)
                     isReconnecting.set(false)
                 }
-
                 override fun onMessage(ws: WebSocket, text: String) {
                     mainHandler.post { eventSink?.success(text) }
                     try {
                         val obj = JSONObject(text)
                         if (obj.optString("type") == "detection_result") handleDetectionResult(obj)
-                    } catch (_: Exception) {
-                    }
+                    } catch (_: Exception) {}
                 }
-
                 override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                     isWsConnected.set(false)
-                    if (!isAssistantShowing.get()) {
-                        scheduleReconnect()
-                    } else {
-                        Log.d(TAG, "WS closed while assistant showing — no reconnect")
-                    }
+                    if (!isAssistantShowing.get()) scheduleReconnect()
+                    else Log.d(TAG, "WS closed while assistant showing — no reconnect")
                 }
-
                 override fun onFailure(ws: WebSocket, t: Throwable, r: okhttp3.Response?) {
                     isWsConnected.set(false)
-                    if (!isAssistantShowing.get()) {
-                        scheduleReconnect()
-                    } else {
-                        Log.d(TAG, "WS failure while assistant showing — no reconnect")
-                    }
+                    if (!isAssistantShowing.get()) scheduleReconnect()
+                    else Log.d(TAG, "WS failure while assistant showing — no reconnect")
                 }
             })
     }
 
     // =========================================================================
     // ✅ MAIN: handleDetectionResult
-    // Foreground → Flutter dialog
-    // Background → WindowManager Overlay (Unisoc ke liye guaranteed kaam karta hai)
     // =========================================================================
 
     private fun handleDetectionResult(obj: JSONObject) {
@@ -652,16 +656,13 @@ class DrowsinessMonitoringService : LifecycleService() {
             val canShow = isAssistantShowing.compareAndSet(false, true)
 
             if (canShow) {
-                // Pause detection / WebSocket while assistant is active
                 pauseDetectionForAssistant()
-
                 playAlarmOnce()
-
                 startAssistantTimeout()
                 acquireWakeLock()
 
                 if (isFlutterForeground && eventSink != null) {
-                    // ─── FOREGROUND: Flutter dialog ───────────────────────
+                    // ── FOREGROUND: Flutter dialog ──
                     Log.d(TAG, "📱 FOREGROUND — Flutter show_dialog")
                     mainHandler.post {
                         eventSink?.success(JSONObject().apply {
@@ -670,27 +671,25 @@ class DrowsinessMonitoringService : LifecycleService() {
                         }.toString())
                     }
                     mainHandler.postDelayed({ stopAlarm() }, 2200)
-
                 } else {
-                    // ─── BACKGROUND: WindowManager Overlay ────────────────
-                    // ✅ Unisoc par Activity launch blocked hai
-                    // WindowManager overlay kisi bhi restriction ko bypass karta hai
-                    Log.d(TAG, "📱 BACKGROUND — WindowManager Overlay launching")
-
+                    // ── BACKGROUND: WindowManager Overlay ──
+                    Log.d(TAG, "📱 BACKGROUND — WindowManager Overlay")
                     mainHandler.postDelayed({
                         stopAlarm()
-                        mainHandler.postDelayed({
-                            showOverlay()
-                        }, 300)
+                        mainHandler.postDelayed({ showOverlay() }, 300)
                     }, 2200)
                 }
 
-            } else if (!canShow) {
+            } else {
                 Log.d(TAG, "⏭ Already showing — skip")
             }
 
         } else if (status == "ALERT") {
-            drowsyEventCount = 0
+            // ✅ Driver awake — counter reset
+            if (drowsyEventCount > 0) {
+                Log.d(TAG, "✅ Status ALERT — drowsyEventCount reset to 0")
+                drowsyEventCount = 0
+            }
             stopAlarm()
         }
     }
@@ -701,7 +700,8 @@ class DrowsinessMonitoringService : LifecycleService() {
 
     private fun scheduleReconnect() {
         if (isReconnecting.getAndSet(true)) return
-        reconnectTimer?.cancel(); reconnectTimer = Timer()
+        reconnectTimer?.cancel()
+        reconnectTimer = Timer()
         reconnectTimer?.schedule(object : TimerTask() {
             override fun run() {
                 if (isServiceRunning) { isReconnecting.set(false); connectWebSocket() }
@@ -710,7 +710,8 @@ class DrowsinessMonitoringService : LifecycleService() {
     }
 
     private fun startPingLoop() {
-        pingTimer?.cancel(); pingTimer = Timer()
+        pingTimer?.cancel()
+        pingTimer = Timer()
         pingTimer?.scheduleAtFixedRate(object : TimerTask() {
             override fun run() {
                 if (isWsConnected.get()) {
@@ -740,7 +741,7 @@ class DrowsinessMonitoringService : LifecycleService() {
     }
 
     // =========================================================================
-    // Pause / resume detection around assistant conversation
+    // Pause / Resume detection
     // =========================================================================
 
     private fun pauseDetectionForAssistant() {
@@ -750,16 +751,12 @@ class DrowsinessMonitoringService : LifecycleService() {
             reconnectTimer?.cancel(); reconnectTimer = null
             isReconnecting.set(false)
             isWsConnected.set(false)
-            try {
-                webSocket?.close(1000, "assistant_active")
-            } catch (_: Exception) {
-            }
+            try { webSocket?.close(1000, "assistant_active") } catch (_: Exception) {}
             webSocket = null
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
     }
 
-    private fun resumeDetectionAfterAssistant() {
+    internal fun resumeDetectionAfterAssistant() {
         if (!isServiceRunning) return
         if (isAssistantShowing.get()) {
             Log.d(TAG, "resumeDetectionAfterAssistant: assistant still showing, skip")

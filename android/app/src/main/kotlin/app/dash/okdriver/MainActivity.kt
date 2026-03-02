@@ -92,13 +92,17 @@ class MainActivity : FlutterActivity() {
                     "startService" -> {
                         val cameraType = call.argument<String>("cameraType")
                         val segmentMinutes = call.argument<Int>("segmentMinutes") ?: 10
+                        val recordAudio = call.argument<Boolean>("recordAudio") ?: true
 
                         BackgroundRecordingService.currentLensFacing =
                             if (cameraType == "back") CameraSelector.LENS_FACING_BACK
                             else CameraSelector.LENS_FACING_FRONT
 
+                        BackgroundRecordingService.recordAudioEnabled = recordAudio
+
                         val serviceIntent = intentWithNewVideoPath(intent).apply {
                             putExtra("segmentMinutes", segmentMinutes)
+                            putExtra("recordAudio", recordAudio)
                         }
 
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -215,6 +219,16 @@ class MainActivity : FlutterActivity() {
                     if (DrowsinessMonitoringService.isServiceRunning) {
                         intent.action = "ACTION_ASSISTANT_CLOSED"
                         startService(intent)
+                    }
+                    result.success(true)
+                }
+
+                // ✅ NEW: Flutter dialog band hone par native drowsy counter reset
+                "resetDrowsyCounter" -> {
+                    if (DrowsinessMonitoringService.isServiceRunning) {
+                        intent.action = "ACTION_RESET_DROWSY_COUNTER"
+                        startService(intent)
+                        Log.d("MainActivity", "✅ resetDrowsyCounter → ACTION_RESET_DROWSY_COUNTER sent")
                     }
                     result.success(true)
                 }
@@ -357,8 +371,7 @@ class BackgroundRecordingService : LifecycleService() {
     private var recording: Recording? = null
     private var cameraProvider: ProcessCameraProvider? = null
 
-    // Segment recording config
-    private var segmentDurationMs: Long = 10 * 60_000L   // default 10 minutes
+    private var segmentDurationMs: Long = 10 * 60_000L
     private var segmentTimer: java.util.Timer? = null
     private val segmentUris: java.util.ArrayDeque<android.net.Uri> = java.util.ArrayDeque()
 
@@ -366,6 +379,7 @@ class BackgroundRecordingService : LifecycleService() {
         var isServiceRunning = false
         var currentLensFacing = CameraSelector.LENS_FACING_FRONT
         var currentPreviewView: PreviewView? = null
+        @JvmStatic var recordAudioEnabled: Boolean = true
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -385,9 +399,9 @@ class BackgroundRecordingService : LifecycleService() {
                 updateNotification(isVisible)
             }
             else -> if (!isServiceRunning) {
-                // Read desired segment duration (minutes) from intent, fallback to 10
                 val minutes = intent?.getIntExtra("segmentMinutes", 10) ?: 10
                 segmentDurationMs = minutes.coerceAtLeast(1) * 60_000L
+                recordAudioEnabled = intent?.getBooleanExtra("recordAudio", true) ?: true
 
                 isServiceRunning = true
                 updateNotification(true)
@@ -481,7 +495,6 @@ class BackgroundRecordingService : LifecycleService() {
                     cameraProvider?.bindToLifecycle(this, selector, imageAnalysis, videoCapture!!)
                 }
 
-                // Start first recording segment
                 startNewSegment()
             } catch (e: Exception) {
                 Log.e("BackgroundRecordingService", "Camera binding failed", e)
@@ -501,16 +514,13 @@ class BackgroundRecordingService : LifecycleService() {
         super.onDestroy()
     }
 
-    // Start a new fixed-duration recording segment
     private fun startNewSegment() {
         val vc = videoCapture ?: return
 
-        // Cancel any existing timer and schedule a new one
         segmentTimer?.cancel()
         segmentTimer = java.util.Timer()
         segmentTimer?.schedule(object : java.util.TimerTask() {
             override fun run() {
-                // When duration completes, start next segment on main thread
                 ContextCompat.getMainExecutor(this@BackgroundRecordingService).execute {
                     if (isServiceRunning) {
                         startNewSegment()
@@ -528,25 +538,23 @@ class BackgroundRecordingService : LifecycleService() {
             put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/OKDriver-Dashcam")
         }).build()
 
-        // Stop any current recording and start a fresh one
-        try {
-            recording?.stop()
-        } catch (_: Exception) {
+        try { recording?.stop() } catch (_: Exception) {}
+
+        val output = vc.output
+        var recordingBuilder = output.prepareRecording(this, opts)
+        if (recordAudioEnabled) {
+            recordingBuilder = recordingBuilder.withAudioEnabled()
         }
 
-        recording = vc.output
-            .prepareRecording(this, opts)
-            .withAudioEnabled()
-            .start(ContextCompat.getMainExecutor(this)) { event ->
-                Log.d("BackgroundRecordingService", "Recording event: $event")
-                if (event is androidx.camera.video.VideoRecordEvent.Finalize) {
-                    val uri = event.outputResults.outputUri
-                    handleSegmentFinalized(uri)
-                }
+        recording = recordingBuilder.start(ContextCompat.getMainExecutor(this)) { event ->
+            Log.d("BackgroundRecordingService", "Recording event: $event")
+            if (event is androidx.camera.video.VideoRecordEvent.Finalize) {
+                val uri = event.outputResults.outputUri
+                handleSegmentFinalized(uri)
             }
+        }
     }
 
-    // Keep only the latest 3 segments, delete oldest from gallery
     private fun handleSegmentFinalized(uri: android.net.Uri) {
         if (uri == android.net.Uri.EMPTY) return
         segmentUris.addLast(uri)

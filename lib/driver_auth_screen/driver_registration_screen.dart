@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:okdriver/bottom_navigation_bar/bottom_navigation_bar.dart';
+import 'package:okdriver/permissionscreen/permissionscreen.dart';
 import 'package:okdriver/service/api_config.dart';
 import 'dart:convert';
 import 'dart:async';
@@ -179,7 +179,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen>
         HapticFeedback.heavyImpact();
         _showMessage('Registration successful!', isError: false);
 
-        // Navigate to home screen after delay
+        // Navigate to permission screen after delay
         await Future.delayed(const Duration(milliseconds: 800));
 
         if (mounted) {
@@ -187,7 +187,7 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen>
             context,
             PageRouteBuilder(
               pageBuilder: (context, animation, secondaryAnimation) =>
-                  BottomNavScreen(),
+                  const PermissionScreen(),
               transitionsBuilder:
                   (context, animation, secondaryAnimation, child) {
                 return SlideTransition(

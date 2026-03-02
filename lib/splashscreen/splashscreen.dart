@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:okdriver/permissionscreen/permissionscreen.dart';
 import 'package:okdriver/bottom_navigation_bar/bottom_navigation_bar.dart';
+import 'package:okdriver/role_selection/role_selection.dart';
 import 'package:okdriver/service/usersession_service.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -32,35 +32,16 @@ class _SplashScreenState extends State<SplashScreen> {
       final sessionService = UserSessionService.instance;
 
       if (sessionService.isLoggedIn && sessionService.authToken != null) {
-        // User is logged in, verify session with backend
-        try {
-          final userData = await sessionService.fetchCurrentUserData();
-          if (userData != null) {
-            // Session is valid, go to main app
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => BottomNavScreen()),
-            );
-          } else {
-            // Session expired or invalid, go to login
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const PermissionScreen()),
-            );
-          }
-        } catch (e) {
-          print('Error verifying session: $e');
-          // On error, go to login
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const PermissionScreen()),
-          );
-        }
-      } else {
-        // User is not logged in, go to permission screen (which leads to role selection)
+        // User is logged in -> go directly to app
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const PermissionScreen()),
+          MaterialPageRoute(builder: (context) => BottomNavScreen()),
+        );
+      } else {
+        // User not logged-in -> go to role selection / login
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const RoleSelectionScreen()),
         );
       }
     }
