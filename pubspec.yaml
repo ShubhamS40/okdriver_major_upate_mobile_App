@@ -40,7 +40,7 @@ dependencies:
   
   video_player: ^2.10.0
   permission_handler: ^12.0.1
-  path_provider: ^2.1.2
+  path_provider: ^2.1.5
   http: ^1.4.0
   country_picker: ^2.0.27
   country_code_picker: ^3.3.0
@@ -57,7 +57,7 @@ dependencies:
   speech_to_text: ^7.3.0
   flutter_tts: ^3.8.5
   avatar_glow: ^3.0.1
-  just_audio: ^0.9.36
+  just_audio: ^0.10.5
   flutter_launcher_icons: ^0.14.4
   web_socket_channel: ^3.0.3
   device_info_plus: ^11.3.0
@@ -68,6 +68,7 @@ dependencies:
   url_launcher: ^6.3.2
   webview_flutter: ^4.13.0
   digia_ui: ^0.4.3
+  record: ^6.2.0
   
   
   

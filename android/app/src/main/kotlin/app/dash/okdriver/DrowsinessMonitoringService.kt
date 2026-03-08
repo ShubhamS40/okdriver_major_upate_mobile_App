@@ -79,6 +79,8 @@ class DrowsinessMonitoringService : LifecycleService() {
 
     // ✅ Single source of truth — reset karna zaruri hai jab bhi dialog close ho
     private var drowsyEventCount = 0
+    // ✅ Native frame counter: har DROWSY status par +1, dialog/alert par reset
+    private var drowsyFramesSinceReset = 0
 
     @Volatile private var isFlutterForeground = true
 
@@ -147,6 +149,7 @@ class DrowsinessMonitoringService : LifecycleService() {
             // ✅ FIXED: Flutter dialog "I'm Awake — Close" button → full reset
             "ACTION_ASSISTANT_CLOSED" -> {
                 drowsyEventCount = 0
+                drowsyFramesSinceReset = 0
                 isAssistantShowing.set(false)
                 cancelAssistantTimeout()
                 releaseWakeLock()
@@ -158,6 +161,7 @@ class DrowsinessMonitoringService : LifecycleService() {
             // ✅ NEW: Flutter onDialogClosed callback se explicit counter reset
             "ACTION_RESET_DROWSY_COUNTER" -> {
                 drowsyEventCount = 0
+                drowsyFramesSinceReset = 0
                 isAssistantShowing.set(false)
                 cancelAssistantTimeout()
                 Log.d(TAG, "✅ ACTION_RESET_DROWSY_COUNTER — drowsyEventCount=0, isAssistantShowing=false")
@@ -168,6 +172,7 @@ class DrowsinessMonitoringService : LifecycleService() {
                     Log.d(TAG, "DMS service starting")
                     isServiceRunning = true
                     drowsyEventCount = 0
+                    drowsyFramesSinceReset = 0
                     isAssistantShowing.set(false)
                     isFlutterForeground = true
                     lastBindWasWithPreview = null
@@ -201,6 +206,7 @@ class DrowsinessMonitoringService : LifecycleService() {
         dismissOverlay()
         releaseWakeLock()
         drowsyEventCount = 0
+        drowsyFramesSinceReset = 0
         isAssistantShowing.set(false)
         isServiceRunning = false
         isFlutterForeground = true
@@ -649,13 +655,31 @@ class DrowsinessMonitoringService : LifecycleService() {
         val shouldAlert = data.optBoolean("should_alert", false) ||
                 data.optInt("alert_level", 0) >= 2
 
-        if (shouldAlert && status == "DROWSY") {
+        // ✅ Local frame counter — server se independent
+        if (status == "DROWSY") {
+            drowsyFramesSinceReset++
+        } else if (status == "ALERT") {
+            if (drowsyFramesSinceReset > 0) {
+                Log.d(TAG, "✅ Status ALERT — drowsyFramesSinceReset reset to 0")
+            }
+            drowsyFramesSinceReset = 0
+        }
+
+        val MIN_DROWSY_FRAMES = 7
+
+        // ✅ Sirf tab alert jab local frames threshold cross ho
+        if (shouldAlert && status == "DROWSY" && drowsyFramesSinceReset >= MIN_DROWSY_FRAMES) {
             drowsyEventCount++
-            Log.d(TAG, "🚨 DROWSY event #$drowsyEventCount | isShowing=${isAssistantShowing.get()} | foreground=$isFlutterForeground")
+            Log.d(
+                TAG,
+                "🚨 DROWSY event #$drowsyEventCount | frames=$drowsyFramesSinceReset | isShowing=${isAssistantShowing.get()} | foreground=$isFlutterForeground"
+            )
 
             val canShow = isAssistantShowing.compareAndSet(false, true)
 
             if (canShow) {
+                // ✅ Ek full assistant cycle ke baad threshold wapas 0 se start hoga
+                drowsyFramesSinceReset = 0
                 pauseDetectionForAssistant()
                 playAlarmOnce()
                 startAssistantTimeout()

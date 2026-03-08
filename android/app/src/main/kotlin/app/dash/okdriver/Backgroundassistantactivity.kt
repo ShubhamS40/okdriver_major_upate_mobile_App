@@ -465,7 +465,11 @@ class BackgroundAssistantActivity : Activity() {
                     processResponse(textToUse)
                 } else {
                     Log.w(TAG, "STT: empty result")
-                    updateStatus("Tap mic or use buttons below")
+                    updateStatus("Didn't catch that — listening again...")
+                    // ✅ Auto-restart listening so mic stays active until user responds
+                    if (conversationActive && !isSpeakingTts) {
+                        mainHandler.postDelayed({ startListeningNow() }, 400)
+                    }
                 }
             }
 
@@ -473,10 +477,18 @@ class BackgroundAssistantActivity : Activity() {
                 isListening = false; setMicHighlight(false)
                 Log.w(TAG, "STT ERROR code=$code")
                 val msg = when (code) {
-                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Didn't catch that — tap mic or buttons"
+                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                        "Didn't catch that — listening again..."
                     else -> "Tap mic to retry (code $code)"
                 }
                 runOnUiThread { updateStatus(msg) }
+
+                // ✅ For no-match / timeout, automatically start a new listening turn
+                if (conversationActive && !isSpeakingTts &&
+                    (code == SpeechRecognizer.ERROR_NO_MATCH || code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
+                ) {
+                    mainHandler.postDelayed({ startListeningNow() }, 500)
+                }
             }
 
             override fun onEndOfSpeech() { Log.d(TAG, "STT onEndOfSpeech"); isListening = false; setMicHighlight(false) }

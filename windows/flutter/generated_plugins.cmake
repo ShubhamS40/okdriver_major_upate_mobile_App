@@ -9,6 +9,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_tts
   geolocator_windows
   permission_handler_windows
+  record_windows
   share_plus
   smart_auth
   speech_to_text_windows

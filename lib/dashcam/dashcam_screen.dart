@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:permission_handler/permission_handler.dart';
 
 import 'components/camera_selection.dart';
@@ -31,6 +32,8 @@ class _DashcamScreenState extends State<DashcamScreen>
   bool _recordAudio = true; // mic mute/unmute toggle
   Timer? _recordingTimer;
   int _elapsedSeconds = 0;
+
+  static const String _supportEmail = 'support@okdriver.in';
 
   @override
   void initState() {
@@ -182,6 +185,44 @@ class _DashcamScreenState extends State<DashcamScreen>
     setState(() {
       _storageOption = value;
     });
+
+    if (value == 'cloud') {
+      _showCloudSupportDialog();
+    }
+  }
+
+  Future<void> _showCloudSupportDialog() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Cloud Storage Support'),
+          content: const Text(
+            'Cloud storage setup/help ke liye contact karein:\n\nsupport@okdriver.in',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(
+                    const ClipboardData(text: _supportEmail));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('Email copied: support@okdriver.in')),
+                  );
+                }
+              },
+              child: const Text('Copy email'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -339,19 +380,21 @@ class _DashcamScreenState extends State<DashcamScreen>
                       ? 'Tap to mute audio (video only)'
                       : 'Tap to record audio with video',
                   child: InkWell(
-                    onTap: () {
-                      setState(() {
-                        _recordAudio = !_recordAudio;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(_recordAudio
-                              ? 'Audio recording enabled'
-                              : 'Audio muted — only video will be saved'),
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    },
+                    onTap: _isRecording
+                        ? null
+                        : () {
+                            setState(() {
+                              _recordAudio = !_recordAudio;
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(_recordAudio
+                                    ? 'Audio recording enabled'
+                                    : 'Audio muted — only video will be saved'),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          },
                     borderRadius: BorderRadius.circular(40),
                     child: Container(
                       width: 48,
@@ -364,7 +407,7 @@ class _DashcamScreenState extends State<DashcamScreen>
                       ),
                       child: Icon(
                         _recordAudio ? Icons.mic : Icons.mic_off,
-                        color: Colors.white,
+                        color: _isRecording ? Colors.white54 : Colors.white,
                         size: 24,
                       ),
                     ),

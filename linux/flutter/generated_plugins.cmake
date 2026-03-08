@@ -6,6 +6,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_linux
   flutter_avif_linux
   flutter_js
+  record_linux
   smart_auth
   url_launcher_linux
 )

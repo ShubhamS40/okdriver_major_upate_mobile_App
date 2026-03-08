@@ -301,6 +301,13 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
         debugPrint('[DMS] updateVisibility (non-fatal): $e');
       }
 
+      // ✅ Also ensure native drowsy counters/frame thresholds are reset on every fresh start
+      try {
+        await _dmsChannel.invokeMethod('resetDrowsyCounter');
+      } catch (e) {
+        debugPrint('[DMS] resetDrowsyCounter on start (non-fatal): $e');
+      }
+
       _framesSub?.cancel();
       _framesSub = _dmsFrames.receiveBroadcastStream().listen(
             (dynamic data) => _handleDetectionMessage(data),
@@ -331,6 +338,9 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       _lastDialogClosedAt = null;
     });
     try {
+      // ✅ Reset native drowsy counter whenever monitoring is stopped from UI
+      await _dmsChannel.invokeMethod('resetDrowsyCounter');
+
       _framesSub?.cancel();
       _framesSub = null;
       await _dmsChannel.invokeMethod('stopService');
