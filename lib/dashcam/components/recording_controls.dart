@@ -18,9 +18,11 @@ class RecordingControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(16.0),
-      color: Colors.grey[200],
+      color: isDark ? const Color(0xFF121212) : Colors.grey[200],
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [

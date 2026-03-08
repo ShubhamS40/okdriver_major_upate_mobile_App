@@ -4,7 +4,11 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:okdriver/bottom_navigation_bar/bottom_navigation_bar.dart';
 
 class PermissionScreen extends StatefulWidget {
-  const PermissionScreen({Key? key}) : super(key: key);
+  /// Optional: override the default next screen (BottomNavScreen) after
+  /// all permissions are granted. If null, user is taken to BottomNavScreen.
+  final WidgetBuilder? nextBuilder;
+
+  const PermissionScreen({Key? key, this.nextBuilder}) : super(key: key);
 
   @override
   State<PermissionScreen> createState() => _PermissionScreenState();
@@ -18,6 +22,7 @@ class _PermissionScreenState extends State<PermissionScreen>
   PermissionStatus _cameraStatus = PermissionStatus.denied;
   PermissionStatus _micStatus = PermissionStatus.denied;
   PermissionStatus _notificationStatus = PermissionStatus.denied;
+  PermissionStatus _locationStatus = PermissionStatus.denied;
   bool _isRequesting = false;
 
   @override
@@ -54,11 +59,13 @@ class _PermissionScreenState extends State<PermissionScreen>
       final camera = await Permission.camera.status;
       final mic = await Permission.microphone.status;
       final notif = await Permission.notification.status;
+      final location = await Permission.locationWhenInUse.status;
       if (mounted) {
         setState(() {
           _cameraStatus = camera;
           _micStatus = mic;
           _notificationStatus = notif;
+          _locationStatus = location;
         });
       }
     } catch (e) {
@@ -69,7 +76,8 @@ class _PermissionScreenState extends State<PermissionScreen>
   bool get _allGranted =>
       _cameraStatus.isGranted &&
       _micStatus.isGranted &&
-      _notificationStatus.isGranted;
+      _notificationStatus.isGranted &&
+      _locationStatus.isGranted;
 
   Future<void> _requestAll() async {
     if (_isRequesting) return;
@@ -80,6 +88,7 @@ class _PermissionScreenState extends State<PermissionScreen>
       await Permission.camera.request();
       await Permission.microphone.request();
       await Permission.notification.request();
+      await Permission.locationWhenInUse.request();
       await _refreshPermissions();
 
       if (_allGranted) {
@@ -231,10 +240,18 @@ class _PermissionScreenState extends State<PermissionScreen>
   }
 
   void _goNext() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => BottomNavScreen()),
-    );
+    final builder = widget.nextBuilder;
+    if (builder != null) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: builder),
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => BottomNavScreen()),
+      );
+    }
   }
 
   @override
@@ -337,6 +354,18 @@ class _PermissionScreenState extends State<PermissionScreen>
                   status: _notificationStatus,
                   onTap: () async {
                     await Permission.notification.request();
+                    await _refreshPermissions();
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildPermissionTile(
+                  icon: Icons.location_on_outlined,
+                  title: 'Location',
+                  description:
+                      'Required for live trip tracking and fleet monitoring.',
+                  status: _locationStatus,
+                  onTap: () async {
+                    await Permission.locationWhenInUse.request();
                     await _refreshPermissions();
                   },
                 ),

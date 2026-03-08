@@ -73,7 +73,7 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // ✅ Dashcam camera preview factory (existing)
+        // ✅ Dashcam camera preview factory
         flutterEngine
             .platformViewsController
             .registry
@@ -134,7 +134,7 @@ class MainActivity : FlutterActivity() {
             }
 
         // =====================================================================
-        // ✅ DMS MethodChannel
+        // ✅ DMS MethodChannel — BackgroundAssistantActivity/Overlay removed
         // =====================================================================
         val dmsChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -195,26 +195,6 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
 
-                "checkOverlayPermission" -> {
-                    val canDraw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        android.provider.Settings.canDrawOverlays(this)
-                    } else true
-                    result.success(canDraw)
-                }
-
-                "requestOverlayPermission" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                        !android.provider.Settings.canDrawOverlays(this)
-                    ) {
-                        val permIntent = Intent(
-                            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            android.net.Uri.parse("package:$packageName")
-                        )
-                        startActivity(permIntent)
-                    }
-                    result.success(true)
-                }
-
                 "assistantClosed" -> {
                     if (DrowsinessMonitoringService.isServiceRunning) {
                         intent.action = "ACTION_ASSISTANT_CLOSED"
@@ -223,7 +203,6 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
 
-                // ✅ NEW: Flutter dialog band hone par native drowsy counter reset
                 "resetDrowsyCounter" -> {
                     if (DrowsinessMonitoringService.isServiceRunning) {
                         intent.action = "ACTION_RESET_DROWSY_COUNTER"
@@ -232,6 +211,9 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(true)
                 }
+
+                // ✅ REMOVED: checkOverlayPermission, requestOverlayPermission
+                // Background assistant/overlay completely removed — Flutter dialog only
 
                 else -> result.notImplemented()
             }
@@ -571,7 +553,7 @@ class BackgroundRecordingService : LifecycleService() {
 }
 
 // =============================================================================
-// Dashcam Camera Preview (existing — unchanged)
+// Dashcam Camera Preview (unchanged)
 // =============================================================================
 class CameraPreviewView(context: Context) : PlatformView {
     private val previewView: PreviewView = PreviewView(context)

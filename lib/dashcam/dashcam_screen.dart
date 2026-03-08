@@ -227,6 +227,8 @@ class _DashcamScreenState extends State<DashcamScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dashcam'),
@@ -343,7 +345,7 @@ class _DashcamScreenState extends State<DashcamScreen>
           ),
           Container(
             padding: const EdgeInsets.all(16.0),
-            color: Colors.grey[200],
+            color: isDark ? const Color(0xFF121212) : Colors.grey[200],
             child: Row(
               children: [
                 // Start / Stop recording button

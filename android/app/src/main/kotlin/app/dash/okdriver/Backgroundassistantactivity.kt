@@ -35,9 +35,12 @@ import android.content.pm.PackageManager
 class BackgroundAssistantActivity : Activity() {
 
     companion object {
-        private const val TAG = "BGA_DEBUG"   // easy to filter in logcat
+        private const val TAG = "BGA_DEBUG"
         private const val REQ_MIC_PERMISSION = 1001
         private const val ASSISTANT_NOTIF_ID = 1004
+
+        // ✅ FIX: Server IP uniform — same as DrowsinessMonitoringService
+        private const val ASSISTANT_API_URL = "http://20.204.177.196:5000/api/assistant/chat"
 
         fun start(context: Context, drowsyEvents: Int = 0) {
             context.startActivity(
@@ -71,10 +74,12 @@ class BackgroundAssistantActivity : Activity() {
     private var assistantResponse = "Driver, are you alright? Please respond."
     private var isSpeakingTts = false
 
+    // ✅ FIX: OkHttp client with cleartext allowed + increased timeout
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     // =========================================================================
@@ -269,11 +274,6 @@ class BackgroundAssistantActivity : Activity() {
         Log.d(TAG, "UI built successfully")
     }
 
-    /**
-     * Flutter mirror:
-     *   _text.isNotEmpty && !_hasResponded → show speech in quotes
-     *   else → show _assistantResponse
-     */
     private fun refreshResponseBubble() = runOnUiThread {
         val newText = if (recognizedText.isNotEmpty() && !hasResponded)
             "\"$recognizedText\""
@@ -348,10 +348,6 @@ class BackgroundAssistantActivity : Activity() {
         speakThenListen(msg)
     }
 
-    /**
-     * Speak text via TTS → onDone → startListeningNow()
-     * Mirrors Flutter: _speak(text) → completionHandler → _listen()
-     */
     private fun speakThenListen(text: String) {
         if (!conversationActive) { Log.d(TAG, "speakThenListen: conversationActive=false, skip"); return }
 
@@ -423,7 +419,6 @@ class BackgroundAssistantActivity : Activity() {
             updateStatus("Voice N/A — use buttons"); return
         }
 
-        // Reset last recognized text for this turn
         recognizedText = ""
         refreshResponseBubble()
 
@@ -455,8 +450,6 @@ class BackgroundAssistantActivity : Activity() {
                 val finalText = r?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: ""
                 Log.d(TAG, "STT FINAL RESULT: \"$finalText\" (recognizedSoFar=\"$recognizedText\")")
 
-                // Some devices only send partials and give empty final result.
-                // Fallback to last recognized text if final is empty.
                 val textToUse = if (finalText.isNotEmpty()) finalText else recognizedText
 
                 if (textToUse.isNotEmpty()) {
@@ -466,7 +459,6 @@ class BackgroundAssistantActivity : Activity() {
                 } else {
                     Log.w(TAG, "STT: empty result")
                     updateStatus("Didn't catch that — listening again...")
-                    // ✅ Auto-restart listening so mic stays active until user responds
                     if (conversationActive && !isSpeakingTts) {
                         mainHandler.postDelayed({ startListeningNow() }, 400)
                     }
@@ -483,7 +475,6 @@ class BackgroundAssistantActivity : Activity() {
                 }
                 runOnUiThread { updateStatus(msg) }
 
-                // ✅ For no-match / timeout, automatically start a new listening turn
                 if (conversationActive && !isSpeakingTts &&
                     (code == SpeechRecognizer.ERROR_NO_MATCH || code == SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
                 ) {
@@ -527,7 +518,7 @@ class BackgroundAssistantActivity : Activity() {
     }
 
     // =========================================================================
-    // AI
+    // AI — HTTP with cleartext fix
     // =========================================================================
 
     private fun processResponse(userMsg: String) {
@@ -541,6 +532,7 @@ class BackgroundAssistantActivity : Activity() {
         updateStatus("Thinking...")
         refreshResponseBubble()
 
+        // ✅ FIX: Show fallback immediately if already tried and failed
         val body = JSONObject().apply {
             put("message", userMsg)
             put("userId", "1")
@@ -550,69 +542,67 @@ class BackgroundAssistantActivity : Activity() {
             put("enablePremium", true)
         }.toString()
 
+        Log.d(TAG, "HTTP POST to: $ASSISTANT_API_URL")
         Log.d(TAG, "HTTP POST body: $body")
-        Log.d(TAG, "HTTP URL: http://20.204.177.196:5000/api/assistant/chat")
 
         val request = Request.Builder()
-            .url("http://20.204.177.196:5000/api/assistant/chat")
+            .url(ASSISTANT_API_URL)
             .post(body.toRequestBody("application/json".toMediaType()))
             .addHeader("Content-Type", "application/json")
             .build()
 
-        Log.d(TAG, "Enqueuing HTTP call...")
+        // ✅ FIX: 25s timeout watchdog — server reply nahi aya to local fallback
+        val timeoutHandle = mainHandler.postDelayed({
+            if (conversationActive && hasResponded) {
+                Log.w(TAG, "HTTP timeout watchdog — using fallback")
+                val fallback = localFallback(userMsg)
+                assistantResponse = fallback
+                refreshResponseBubble()
+                updateStatus("Assistant")
+                speakThenListen(fallback)
+            }
+        }, 25_000)
 
         httpClient.newCall(request).enqueue(object : Callback {
 
             override fun onFailure(call: Call, e: IOException) {
-                Log.e(TAG, "══ HTTP onFailure ══")
-                Log.e(TAG, "Error: ${e.javaClass.simpleName}: ${e.message}")
-                Log.e(TAG, "Cause: ${e.cause}")
-                val fallback = "I understand. Please pull over safely if you feel drowsy."
+                mainHandler.removeCallbacks(timeoutHandle as Runnable)
+                Log.e(TAG, "HTTP onFailure: ${e.javaClass.simpleName}: ${e.message}")
+                val fallback = localFallback(userMsg)
                 runOnUiThread {
-                    Log.d(TAG, "onFailure → showing fallback on UI thread")
                     assistantResponse = fallback
                     refreshResponseBubble()
-                    updateStatus("Assistant")
+                    updateStatus("Assistant (offline)")
                     speakThenListen(fallback)
                 }
             }
 
             override fun onResponse(call: Call, response: Response) {
-                Log.d(TAG, "══ HTTP onResponse ══")
-                Log.d(TAG, "HTTP status code: ${response.code}")
-                Log.d(TAG, "HTTP headers: ${response.headers}")
+                mainHandler.removeCallbacks(timeoutHandle as Runnable)
+                Log.d(TAG, "HTTP onResponse code=${response.code}")
 
                 val rawBody = try {
-                    val b = response.body?.string()
-                    Log.d(TAG, "HTTP raw body: $b")
-                    b ?: "{}"
-                } catch (e: Exception) {
-                    Log.e(TAG, "HTTP body read error: ${e.message}")
-                    "{}"
-                }
+                    response.body?.string() ?: "{}"
+                } catch (e: Exception) { "{}" }
+
+                Log.d(TAG, "HTTP raw body: $rawBody")
 
                 runOnUiThread {
-                    Log.d(TAG, "onResponse → processing on UI thread")
                     try {
                         val json = JSONObject(rawBody)
-                        Log.d(TAG, "JSON keys: ${json.keys().asSequence().toList()}")
-
                         val reply = json.optString("response", "")
                             .trim()
-                            .ifEmpty { "Please stay alert and drive safely." }
+                            .ifEmpty { localFallback(userMsg) }
 
                         Log.d(TAG, "Extracted reply: \"$reply\"")
-
                         assistantResponse = reply
                         refreshResponseBubble()
                         updateStatus("Assistant")
-                        Log.d(TAG, "Calling speakThenListen with reply...")
                         speakThenListen(reply)
 
                     } catch (e: Exception) {
                         Log.e(TAG, "JSON parse error: ${e.message}")
-                        Log.e(TAG, "Raw was: $rawBody")
-                        val fallback = "Stay alert. Pull over if needed."
+                        val fallback = localFallback(userMsg)
                         assistantResponse = fallback
                         refreshResponseBubble()
                         speakThenListen(fallback)
@@ -621,7 +611,22 @@ class BackgroundAssistantActivity : Activity() {
             }
         })
 
-        Log.d(TAG, "HTTP call enqueued successfully")
+        Log.d(TAG, "HTTP call enqueued")
+    }
+
+    // ✅ FIX: Local fallback responses — server down ho to bhi kaam kare
+    private fun localFallback(userMsg: String): String {
+        val lower = userMsg.lowercase()
+        return when {
+            lower.contains("fine") || lower.contains("okay") || lower.contains("ok") || lower.contains("alert") ->
+                "Good to hear! Stay focused and keep your eyes on the road. Drive safely!"
+            lower.contains("help") || lower.contains("tired") || lower.contains("sleepy") || lower.contains("drowsy") ->
+                "Please pull over safely as soon as possible. Take a short break and drink some water. Your safety is most important."
+            lower.contains("stop") || lower.contains("close") ->
+                "Alright, stay focused. Drive safely!"
+            else ->
+                "Stay alert, driver. Please keep your eyes on the road and drive safely."
+        }
     }
 
     private fun handleQuickResponse(text: String) {

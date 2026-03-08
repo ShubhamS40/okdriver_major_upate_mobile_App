@@ -36,6 +36,9 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
   bool _isConnected = false;
   int _localDrowsyFrames = 0;
 
+  // Pause flag — dialog open ho tab frames process mat karo
+  bool _framesPaused = false;
+
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
@@ -45,7 +48,6 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
   int _lastDialogEvent = 0;
   bool _isDialogShowing = false;
 
-  // ✅ Cooldown: after dialog closes, ignore detections for this many seconds
   static const int _dialogCooldownSeconds = 10;
   DateTime? _lastDialogClosedAt;
 
@@ -120,37 +122,20 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
   }
 
   void _handleDetectionMessage(dynamic data) {
+    // Dialog open hai — frames ignore karo
+    if (_framesPaused) return;
+
     try {
       final message = data is String ? json.decode(data) : data;
 
+      // ✅ Native se show_dialog aaya — Flutter dialog open karo
       if (message['type'] == 'show_dialog') {
-        // ✅ Check cooldown — don't reopen dialog too soon after it was closed
-        if (_lastDialogClosedAt != null) {
-          final elapsed =
-              DateTime.now().difference(_lastDialogClosedAt!).inSeconds;
-          if (elapsed < _dialogCooldownSeconds) {
-            debugPrint(
-                '[DMS] show_dialog skipped — cooldown active (${elapsed}s < ${_dialogCooldownSeconds}s)');
-            return;
-          }
-        }
-
-        final events = message['drowsy_events'] ?? _drowsyEvents;
-        if (mounted) {
-          setState(() {
-            _drowsyEvents = events;
-            _lastDialogEvent = _drowsyEvents;
-          });
-        }
-
-        if (_lifecycleState == AppLifecycleState.resumed &&
-            !_isDialogShowing &&
-            mounted) {
-          _showAssistantBottomSheet();
-        } else {
-          debugPrint(
-              '[DMS] show_dialog skipped — lifecycle: $_lifecycleState, dialogShowing: $_isDialogShowing');
-        }
+        final events =
+            (message['drowsy_events'] as num?)?.toInt() ?? _drowsyEvents;
+        if (events > 0) _drowsyEvents = events;
+        debugPrint(
+            '[DMS] 📱 show_dialog received from native, events=$_drowsyEvents');
+        _tryShowDialog();
         return;
       }
 
@@ -186,6 +171,8 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
   }
 
   void _handleAlerts(Map<String, dynamic> result) {
+    if (_framesPaused || _isDialogShowing) return;
+
     final status = result['status'];
     final shouldAlert =
         result['should_alert'] ?? (result['alert_level'] ?? 0) >= 2;
@@ -195,6 +182,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       _voiceAlertService.alertDrowsy(isCritical: alertLevel >= 4);
       _pulseController.repeat(reverse: true);
       _drowsyEvents++;
+      _tryShowDialog();
     } else if (status == 'YAWNING') {
       _voiceAlertService.alertYawning();
     } else if (status == 'NO_FACE') {
@@ -206,13 +194,39 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     }
   }
 
+  void _tryShowDialog() {
+    if (_framesPaused || _isDialogShowing) return;
+
+    if (_lastDialogClosedAt != null) {
+      final elapsed = DateTime.now().difference(_lastDialogClosedAt!).inSeconds;
+      if (elapsed < _dialogCooldownSeconds) {
+        debugPrint('[DMS] Dialog skipped — cooldown active');
+        return;
+      }
+    }
+
+    // ✅ App foreground mein ho tab hi dialog dikhao
+    if (_lifecycleState != AppLifecycleState.resumed) {
+      debugPrint('[DMS] Dialog skipped — app not in foreground');
+      return;
+    }
+    if (!mounted) return;
+
+    debugPrint('[DMS] 🚨 Showing dialog, drowsy events=$_drowsyEvents');
+    if (mounted) setState(() => _lastDialogEvent = _drowsyEvents);
+    _showAssistantBottomSheet();
+  }
+
   void _showAssistantBottomSheet() {
     if (!mounted || _isDialogShowing) return;
-    _isDialogShowing = true;
-    _pulseController.stop();
 
-    debugPrint(
-        '[DMS] _showAssistantBottomSheet — instant dialog + parallel alarm');
+    setState(() {
+      _isDialogShowing = true;
+      _framesPaused = true;
+    });
+
+    _pulseController.stop();
+    debugPrint('[DMS] ⏸ Frames PAUSED — dialog opening');
 
     _voiceAlertService.playAlarmParallel();
 
@@ -225,45 +239,45 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       builder: (context) => AssistantDialog(
         drowsyEvents: _drowsyEvents,
         onDialogClosed: (responded) {
-          _isDialogShowing = false;
-          _voiceAlertService.stopBeep();
-
-          // ✅ Record when dialog was closed for cooldown
-          _lastDialogClosedAt = DateTime.now();
-
-          // ✅ Reset ALL counters on Flutter side
-          if (mounted) {
-            setState(() {
-              _drowsyEvents = 0;
-              _lastDialogEvent = 0;
-              _localDrowsyFrames = 0;
-              // ✅ Also zero out metrics display so progress bar resets visually
-              if (_metrics != null) {
-                _metrics = Map<String, dynamic>.from(_metrics!)
-                  ..['drowsy_frames'] = 0
-                  ..['yawning_frames'] = 0
-                  ..['drowsy_events'] = 0;
-              }
-            });
-          }
-
-          // ✅ Tell native Android to reset its drowsy_frames counter too
-          _dmsChannel.invokeMethod('resetDrowsyCounter').catchError((e) {
-            debugPrint('[DMS] resetDrowsyCounter error (non-fatal): $e');
-          });
-
-          // ✅ Also call assistantClosed as before
-          _dmsChannel.invokeMethod('assistantClosed').catchError((e) {
-            debugPrint('[DMS] assistantClosed error (non-fatal): $e');
-          });
+          _onDialogClosed();
         },
       ),
     ).then((_) {
-      // Safety fallback if sheet was dismissed some other way
-      if (_isDialogShowing) {
-        _isDialogShowing = false;
-        _lastDialogClosedAt = DateTime.now();
+      if (_isDialogShowing) _onDialogClosed();
+    });
+  }
+
+  void _onDialogClosed() {
+    if (!mounted) return;
+
+    debugPrint('[DMS] ▶ Frames RESUMED — dialog closed');
+
+    _voiceAlertService.stopBeep();
+    _lastDialogClosedAt = DateTime.now();
+
+    setState(() {
+      _isDialogShowing = false;
+      _framesPaused = false;
+      _drowsyEvents = 0;
+      _lastDialogEvent = 0;
+      _localDrowsyFrames = 0;
+      if (_metrics != null) {
+        _metrics = Map<String, dynamic>.from(_metrics!)
+          ..['drowsy_frames'] = 0
+          ..['yawning_frames'] = 0
+          ..['drowsy_events'] = 0;
       }
+    });
+
+    _dmsChannel.invokeMethod('updateVisibility', {'visible': true}).catchError(
+        (e) => debugPrint('[DMS] resume visibility (non-fatal): $e'));
+
+    _dmsChannel.invokeMethod('resetDrowsyCounter').catchError((e) {
+      debugPrint('[DMS] resetDrowsyCounter error (non-fatal): $e');
+    });
+
+    _dmsChannel.invokeMethod('assistantClosed').catchError((e) {
+      debugPrint('[DMS] assistantClosed error (non-fatal): $e');
     });
   }
 
@@ -282,6 +296,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
 
     setState(() {
       _isMonitoring = true;
+      _framesPaused = false;
       _drowsyEvents = 0;
       _lastDialogEvent = 0;
       _localDrowsyFrames = 0;
@@ -300,8 +315,6 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       } catch (e) {
         debugPrint('[DMS] updateVisibility (non-fatal): $e');
       }
-
-      // ✅ Also ensure native drowsy counters/frame thresholds are reset on every fresh start
       try {
         await _dmsChannel.invokeMethod('resetDrowsyCounter');
       } catch (e) {
@@ -328,6 +341,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
     _pulseController.reset();
     _voiceAlertService.stopBeep();
     setState(() {
+      _framesPaused = false;
       _drowsyEvents = 0;
       _lastDialogEvent = 0;
       _localDrowsyFrames = 0;
@@ -338,9 +352,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       _lastDialogClosedAt = null;
     });
     try {
-      // ✅ Reset native drowsy counter whenever monitoring is stopped from UI
       await _dmsChannel.invokeMethod('resetDrowsyCounter');
-
       _framesSub?.cancel();
       _framesSub = null;
       await _dmsChannel.invokeMethod('stopService');
@@ -356,15 +368,12 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
       _localDrowsyFrames = 0;
       _lastDialogClosedAt = null;
     });
-    // ✅ Also reset native counter on manual reset
     _dmsChannel.invokeMethod('resetDrowsyCounter').catchError((e) {
       debugPrint('[DMS] resetDrowsyCounter error (non-fatal): $e');
     });
   }
 
-  // =========================================================================
-  // UI
-  // =========================================================================
+  // ── UI ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -453,9 +462,13 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
                   ),
                 ),
                 Text(
-                  'AI-powered drowsiness detection',
+                  _framesPaused
+                      ? '⏸ Paused — dialog active'
+                      : 'AI-powered drowsiness detection',
                   style: TextStyle(
-                    color: _isDarkMode ? Colors.white70 : Colors.black54,
+                    color: _framesPaused
+                        ? Colors.orange
+                        : (_isDarkMode ? Colors.white70 : Colors.black54),
                     fontSize: 14,
                   ),
                 ),
@@ -466,7 +479,9 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
             width: 12,
             height: 12,
             decoration: BoxDecoration(
-              color: _isConnected ? Colors.green : Colors.red,
+              color: _framesPaused
+                  ? Colors.orange
+                  : (_isConnected ? Colors.green : Colors.red),
               shape: BoxShape.circle,
             ),
           ),
@@ -619,8 +634,15 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
               _isConnected ? Colors.green : Colors.red,
               Icons.wifi),
           const SizedBox(height: 8),
-          _buildStatusRow('Monitoring', _isMonitoring ? 'Active' : 'Inactive',
-              _isMonitoring ? Colors.green : Colors.grey, Icons.visibility),
+          _buildStatusRow(
+              'Monitoring',
+              _framesPaused
+                  ? 'Paused (dialog)'
+                  : (_isMonitoring ? 'Active' : 'Inactive'),
+              _framesPaused
+                  ? Colors.orange
+                  : (_isMonitoring ? Colors.green : Colors.grey),
+              Icons.visibility),
           const SizedBox(height: 8),
           _buildStatusRow(
               'Voice Alerts',
@@ -671,7 +693,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Background Monitoring Active',
+                  'Flutter Dialog Mode',
                   style: TextStyle(
                     color: _isDarkMode ? Colors.white : Colors.black87,
                     fontSize: 14,
@@ -680,7 +702,7 @@ class _DrowsinessMonitoringScreenState extends State<DrowsinessMonitoringScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Monitoring continues in background. Alerts appear as native overlay dialog.',
+                  'Monitoring runs in background. When drowsiness detected, assistant dialog appears in the app.',
                   style: TextStyle(
                     color: _isDarkMode ? Colors.white70 : Colors.black54,
                     fontSize: 13,

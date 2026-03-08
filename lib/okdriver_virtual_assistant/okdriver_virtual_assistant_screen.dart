@@ -36,8 +36,8 @@ class _OkDriverVirtualAssistantScreenState
 
   // ── State ─────────────────────────────────────────────────────
   List<ChatMessage> _messages = [];
-  String _streamingText = ''; // live text_chunks
-  String _statusText = ''; // status bar
+  String _streamingText = '';
+  String _statusText = '';
   bool _isListening = false;
   bool _isLoading = false;
   bool _isWakeListening = false;
@@ -45,20 +45,57 @@ class _OkDriverVirtualAssistantScreenState
   bool _isDarkMode = false;
   AssistantPhase _phase = AssistantPhase.wakeListening;
 
-  // Wake word
+  VoiceMode _voiceMode = VoicePreferences.voiceMode;
+
   bool _wakeWordEnabled = true;
   DateTime? _lastWakeAt;
 
   @override
   void initState() {
     super.initState();
+    _initTts(); // ✅ TTS PEHLE init karo
     _initSpeech();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _isDarkMode =
           Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
       _setupWebSocket();
+      _service.enableAudioPlayback = _voiceMode == VoiceMode.xtts;
       if (_wakeWordEnabled) _startWakeListening();
     });
+  }
+
+  // ── ✅ TTS INIT — yahi missing tha ────────────────────────────
+  Future<void> _initTts() async {
+    try {
+      // Hindi-English mixed content ke liye hi-IN best
+      await _tts.setLanguage('hi-IN');
+      await _tts.setSpeechRate(0.5); // natural speed
+      await _tts.setVolume(1.0);
+      await _tts.setPitch(1.0);
+
+      // TTS khatam hone pe wake word resume karo
+      _tts.setCompletionHandler(() {
+        print('[TTS] Completed');
+        if (mounted) {
+          setState(() {
+            _phase = _wakeWordEnabled
+                ? AssistantPhase.wakeListening
+                : AssistantPhase.idle;
+          });
+          if (_wakeWordEnabled && !_isWakeListening && !_isListening) {
+            _startWakeListening();
+          }
+        }
+      });
+
+      _tts.setErrorHandler((msg) {
+        print('[TTS] Error: $msg');
+      });
+
+      print('[TTS] ✅ Initialized');
+    } catch (e) {
+      print('[TTS] ❌ Init failed: $e');
+    }
   }
 
   @override
@@ -72,12 +109,10 @@ class _OkDriverVirtualAssistantScreenState
 
   // ── WebSocket setup ───────────────────────────────────────────
   void _setupWebSocket() {
-    // 1. Status messages from backend ("Samajh rahi hoon...", etc.)
     _service.onStatusUpdate = (s) {
       if (mounted) setState(() => _statusText = s);
     };
 
-    // 2. STT transcript — show user bubble
     _service.onTranscript = (text) {
       if (mounted) {
         setState(() {
@@ -89,7 +124,6 @@ class _OkDriverVirtualAssistantScreenState
       }
     };
 
-    // 3. Text chunks — stream into reply bubble live
     _service.onTextChunk = (chunk) {
       if (mounted)
         setState(() {
@@ -98,10 +132,6 @@ class _OkDriverVirtualAssistantScreenState
         });
     };
 
-    // 4. Audio chunks — auto-queued and played by service
-    // (nothing extra needed here — AssistantService handles it)
-
-    // 5. Done — finalise reply bubble
     _service.onDone = (fullText) {
       if (mounted) {
         setState(() {
@@ -109,18 +139,29 @@ class _OkDriverVirtualAssistantScreenState
           _streamingText = '';
           _isLoading = false;
           _statusText = '';
-          _phase = _wakeWordEnabled
-              ? AssistantPhase.wakeListening
-              : AssistantPhase.idle;
         });
         _scrollToBottom();
-        if (_wakeWordEnabled && !_isWakeListening && !_isListening) {
-          _startWakeListening();
+
+        if (_voiceMode == VoiceMode.flutterTts && fullText.isNotEmpty) {
+          // ✅ stop() await karke phir speak — overlap avoid
+          _tts.stop().then((_) {
+            _tts.speak(fullText);
+            // phase + wake resume _tts.setCompletionHandler mein hoga
+          });
+        } else {
+          // XTTS mode — service audio handle karega
+          setState(() {
+            _phase = _wakeWordEnabled
+                ? AssistantPhase.wakeListening
+                : AssistantPhase.idle;
+          });
+          if (_wakeWordEnabled && !_isWakeListening && !_isListening) {
+            _startWakeListening();
+          }
         }
       }
     };
 
-    // 6. Error
     _service.onError = (err) {
       if (mounted) {
         setState(() {
@@ -141,23 +182,25 @@ class _OkDriverVirtualAssistantScreenState
     _service.connect();
   }
 
-  // ── Speech-to-Text init (for wake word only) ──────────────────
+  // ── Speech-to-Text init ───────────────────────────────────────
   void _initSpeech() async {
     _speechReady = await _speech.initialize();
     print('[STT] ready: $_speechReady');
   }
 
-  // ── Mic press — start recording ───────────────────────────────
+  // ── Mic press ─────────────────────────────────────────────────
   Future<void> _startListening() async {
     if (_isListening) return;
 
-    // Stop wake word first
+    // ✅ TTS rok do pehle — user bolta hai to assistant chup rahe
+    await _tts.stop();
+
     if (_isWakeListening) {
       _speech.stop();
       setState(() => _isWakeListening = false);
     }
 
-    await _service.stopAudio(); // stop any playing audio
+    await _service.stopAudio();
 
     final hasPermission = await _recorder.hasPermission();
     if (!hasPermission) {
@@ -189,7 +232,7 @@ class _OkDriverVirtualAssistantScreenState
     print('[Recorder] Started → $path');
   }
 
-  // ── Mic release — stop recording and send to backend ──────────
+  // ── Mic release ───────────────────────────────────────────────
   Future<void> _stopAndSend() async {
     if (!_isListening) return;
 
@@ -228,7 +271,7 @@ class _OkDriverVirtualAssistantScreenState
     await _service.sendAudio(bytes);
   }
 
-  // ── Toggle mic (tap mode — tap once to start, again to stop) ──
+  // ── Toggle mic ────────────────────────────────────────────────
   Future<void> _toggleMic() async {
     if (_isListening) {
       await _stopAndSend();
@@ -308,7 +351,6 @@ class _OkDriverVirtualAssistantScreenState
         title: Text('OkDriver Assistant',
             style: TextStyle(color: textCl, fontWeight: FontWeight.w600)),
         actions: [
-          // Connection dot
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: Icon(Icons.circle,
@@ -324,7 +366,6 @@ class _OkDriverVirtualAssistantScreenState
       ),
       body: Column(
         children: [
-          // ── Status bar ──────────────────────────────────────
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             height: _statusText.isNotEmpty ? 32 : 0,
@@ -340,15 +381,11 @@ class _OkDriverVirtualAssistantScreenState
               ),
             ),
           ),
-
-          // ── Chat list ───────────────────────────────────────
           Expanded(
             child: (_messages.isEmpty && _streamingText.isEmpty)
                 ? _buildEmptyState()
                 : _buildChatList(),
           ),
-
-          // ── Wave animation bar ──────────────────────────────
           if (_isListening || _phase == AssistantPhase.speaking || _isLoading)
             Container(
               height: 48,
@@ -360,8 +397,6 @@ class _OkDriverVirtualAssistantScreenState
                 isDarkMode: _isDarkMode,
               ),
             ),
-
-          // ── Mic button ──────────────────────────────────────
           glass.GlassContainer(
             color: _isDarkMode ? Colors.black : Colors.white,
             opacity: _isDarkMode ? 0.3 : 0.7,
@@ -370,10 +405,8 @@ class _OkDriverVirtualAssistantScreenState
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               child: Center(
                 child: GestureDetector(
-                  // Hold-to-talk
                   onLongPressStart: (_) => _startListening(),
                   onLongPressEnd: (_) => _stopAndSend(),
-                  // Tap-to-toggle
                   onTap: _toggleMic,
                   child: InteractiveMicrophone(
                     isListening: _isListening,
@@ -389,7 +422,6 @@ class _OkDriverVirtualAssistantScreenState
     );
   }
 
-  // ── Empty state ───────────────────────────────────────────────
   Widget _buildEmptyState() {
     String hint;
     if (_isWakeListening)
@@ -469,7 +501,6 @@ class _OkDriverVirtualAssistantScreenState
     );
   }
 
-  // ── Chat list ─────────────────────────────────────────────────
   Widget _buildChatList() {
     final total = _messages.length + (_streamingText.isNotEmpty ? 1 : 0);
     return ListView.builder(
@@ -477,7 +508,6 @@ class _OkDriverVirtualAssistantScreenState
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: total,
       itemBuilder: (ctx, i) {
-        // Streaming bubble at the end
         if (_streamingText.isNotEmpty && i == _messages.length) {
           return ChatBubble(message: _streamingText, isUser: false);
         }
@@ -487,7 +517,6 @@ class _OkDriverVirtualAssistantScreenState
     );
   }
 
-  // ── Settings dialog ───────────────────────────────────────────
   void _showSettings() {
     showDialog(
       context: context,
@@ -496,28 +525,79 @@ class _OkDriverVirtualAssistantScreenState
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SwitchListTile(
-              title: const Text('Wake Word'),
-              subtitle: const Text('"OkDriver" se activate'),
-              value: _wakeWordEnabled,
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Voice Mode',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                  color: _isDarkMode ? Colors.white : Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
+            RadioListTile<VoiceMode>(
+              title: Row(
+                children: [
+                  const Text('Fast TTS'),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF9C27B0).withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'Default',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF9C27B0),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              subtitle: const Text('Phone ki awaaz — bilkul jaldi'),
+              value: VoiceMode.flutterTts,
+              groupValue: _voiceMode,
               activeColor: const Color(0xFF9C27B0),
-              onChanged: (v) {
-                setState(() => _wakeWordEnabled = v);
+              onChanged: (mode) {
+                if (mode == null) return;
+                setState(() => _voiceMode = mode);
+                VoicePreferences.voiceMode = mode;
+                _service.enableAudioPlayback = false;
                 Navigator.pop(context);
-                if (v)
-                  _startWakeListening();
-                else
-                  _speech.stop();
               },
             ),
+            RadioListTile<VoiceMode>(
+              title: const Text('Priya XTTS'),
+              subtitle: const Text('Server ki high-quality awaaz'),
+              value: VoiceMode.xtts,
+              groupValue: _voiceMode,
+              activeColor: const Color(0xFF9C27B0),
+              onChanged: (mode) {
+                if (mode == null) return;
+                setState(() => _voiceMode = mode);
+                VoicePreferences.voiceMode = mode;
+                _service.enableAudioPlayback = true;
+                Navigator.pop(context);
+              },
+            ),
+            const Divider(height: 20),
             ListTile(
+              contentPadding: EdgeInsets.zero,
               leading: Icon(
                 _service.isConnected ? Icons.wifi : Icons.wifi_off,
                 color: _service.isConnected ? Colors.green : Colors.red,
               ),
-              title: const Text('Backend'),
-              subtitle: Text(AssistantService.wsUrl,
-                  style: const TextStyle(fontSize: 11)),
+              title: const Text('Voice Backend'),
+              subtitle: Text(
+                _service.isConnected ? 'Online' : 'Offline — tap to reconnect',
+                style: const TextStyle(fontSize: 11),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _service.connect();

@@ -6,6 +6,7 @@ import 'package:okdriver/theme/theme_provider.dart';
 import 'package:provider/provider.dart';
 // import 'package:okdriver/role_selection/vehicle_owner_screen/vehicle_owner_screen.dart';
 import 'package:okdriver/role_selection/fleet_operator_screen/fleet_operator_screen.dart';
+import 'package:okdriver/permissionscreen/permissionscreen.dart';
 
 class RoleSelectionScreen extends StatefulWidget {
   const RoleSelectionScreen({Key? key}) : super(key: key);

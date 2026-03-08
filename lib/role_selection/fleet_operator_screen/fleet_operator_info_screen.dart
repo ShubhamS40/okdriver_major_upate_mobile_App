@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:okdriver/permissionscreen/permissionscreen.dart';
 import 'package:okdriver/role_selection/fleet_operator_screen/fleet_operator_screen.dart';
 
 class FleetOperatorInfoScreen extends StatelessWidget {
@@ -127,12 +128,18 @@ class FleetOperatorInfoScreen extends StatelessWidget {
                     width: double.infinity,
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: () => {
+                      onPressed: () {
+                        // After the fleet intro, show the permission screen.
+                        // Once all permissions (including location) are granted,
+                        // user is taken to FleetOperatorScreen.
                         Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const FleetOperatorScreen()))
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PermissionScreen(
+                              nextBuilder: (ctx) => const FleetOperatorScreen(),
+                            ),
+                          ),
+                        );
                       },
                       child: const Text(
                         'Continue',

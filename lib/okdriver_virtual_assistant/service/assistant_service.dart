@@ -7,23 +7,25 @@ import 'package:just_audio/just_audio.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:web_socket_channel/io.dart';
 
-/// WebSocket message types — exactly matching app1.py backend
+enum VoiceMode { flutterTts, xtts }
+
+class VoicePreferences {
+  static VoiceMode voiceMode = VoiceMode.flutterTts;
+}
+
 enum WsMessageType { status, transcript, textChunk, audioChunk, done, error }
 
 class WsMessage {
   final WsMessageType type;
-  final String? text;
-  final String? audio;
-  final String? msg;
-  final String? fullText;
+  final String? text, audio, msg, fullText;
 
   WsMessage(
       {required this.type, this.text, this.audio, this.msg, this.fullText});
 
   factory WsMessage.fromJson(Map<String, dynamic> json) {
-    final typeStr = json['type'] as String? ?? '';
+    final t = json['type'] as String? ?? '';
     WsMessageType type;
-    switch (typeStr) {
+    switch (t) {
       case 'status':
         type = WsMessageType.status;
         break;
@@ -53,19 +55,17 @@ class WsMessage {
   }
 }
 
-typedef OnStatusUpdate = void Function(String status);
-typedef OnTranscript = void Function(String text);
-typedef OnTextChunk = void Function(String chunk);
-typedef OnDone = void Function(String fullText);
-typedef OnError = void Function(String error);
+typedef OnStatusUpdate = void Function(String);
+typedef OnTranscript = void Function(String);
+typedef OnTextChunk = void Function(String);
+typedef OnDone = void Function(String);
+typedef OnError = void Function(String);
 
 class AssistantService {
-  // ── 🔧 CHANGE THIS to your Azure server IP ────────────────────
-  static const String serverIp = '20.204.177.196'; // Azure public IP
+  static const String serverIp = '20.204.177.196';
   static const int serverPort = 4000;
   static String get wsUrl => 'ws://$serverIp:$serverPort/ws/talk';
 
-  // ── State ─────────────────────────────────────────────────────
   WebSocketChannel? _channel;
   StreamSubscription? _sub;
   final AudioPlayer _player = AudioPlayer();
@@ -73,7 +73,9 @@ class AssistantService {
   bool _isPlayingAudio = false;
   bool _isConnected = false;
 
-  // ── Callbacks ─────────────────────────────────────────────────
+  /// false = Flutter TTS mode (backend XTTS skip karega)
+  bool enableAudioPlayback = false;
+
   OnStatusUpdate? onStatusUpdate;
   OnTranscript? onTranscript;
   OnTextChunk? onTextChunk;
@@ -82,19 +84,17 @@ class AssistantService {
 
   bool get isConnected => _isConnected;
 
-  // ── Connect ───────────────────────────────────────────────────
   Future<void> connect() async {
     if (_isConnected) return;
     try {
-      print('[WS] Connecting to ${wsUrl}');
+      print('[WS] Connecting to $wsUrl');
       _channel = IOWebSocketChannel.connect(Uri.parse(wsUrl));
       _isConnected = true;
       _sub = _channel!.stream
           .listen(_onMessage, onError: _onWsError, onDone: _onWsDone);
-      print('[WS] ✅ Connected');
+      print('[WS] Connected');
     } catch (e) {
       _isConnected = false;
-      print('[WS] ❌ $e');
       onError?.call('Connection failed: $e');
     }
   }
@@ -105,9 +105,23 @@ class AssistantService {
     _isConnected = false;
   }
 
-  // ── Send raw audio bytes (WebM/opus from recorder) ────────────
+  // Backend ko mode batao — XTTS chahiye ya nahi
+  Future<void> _sendConfig() async {
+    try {
+      _channel!.sink.add(jsonEncode({
+        'type': 'config',
+        'generate_tts': enableAudioPlayback,
+      }));
+      print('[WS] Config → generate_tts=$enableAudioPlayback');
+    } catch (e) {
+      print('[WS] Config error: $e');
+    }
+  }
+
+  // Config pehle bhejo, phir audio bytes
   Future<void> sendAudio(Uint8List bytes) async {
     if (!_isConnected) await connect();
+    await _sendConfig();
     try {
       _channel!.sink.add(bytes);
       print('[WS] Sent ${bytes.length} bytes');
@@ -117,53 +131,41 @@ class AssistantService {
     }
   }
 
-  // ── Handle incoming messages ──────────────────────────────────
   void _onMessage(dynamic raw) {
     try {
       final map = jsonDecode(raw as String) as Map<String, dynamic>;
       final msg = WsMessage.fromJson(map);
-
       switch (msg.type) {
         case WsMessageType.status:
-          print('[WS] status: ${msg.msg}');
           onStatusUpdate?.call(msg.msg ?? '');
           break;
-
         case WsMessageType.transcript:
-          print('[WS] transcript: ${msg.text}');
           onTranscript?.call(msg.text ?? '');
           break;
-
         case WsMessageType.textChunk:
           onTextChunk?.call(msg.text ?? '');
           break;
-
         case WsMessageType.audioChunk:
-          // app1.py sends base64 WAV — decode and queue
-          if (msg.audio != null && msg.audio!.isNotEmpty) {
-            final wavBytes = base64Decode(msg.audio!);
-            _enqueueAudio(wavBytes);
+          if (enableAudioPlayback &&
+              msg.audio != null &&
+              msg.audio!.isNotEmpty) {
+            _enqueueAudio(base64Decode(msg.audio!));
           }
           break;
-
         case WsMessageType.done:
-          print('[WS] done: ${msg.fullText}');
           onDone?.call(msg.fullText ?? '');
           break;
-
         case WsMessageType.error:
-          print('[WS] error: ${msg.msg}');
           onError?.call(msg.msg ?? 'Unknown error');
           break;
       }
     } catch (e) {
-      print('[WS] Parse error: $e — raw: $raw');
+      print('[WS] Parse error: $e');
     }
   }
 
-  // ── Audio queue — sequential WAV chunk playback ───────────────
-  void _enqueueAudio(Uint8List wavBytes) {
-    _audioQueue.add(wavBytes);
+  void _enqueueAudio(Uint8List bytes) {
+    _audioQueue.add(bytes);
     if (!_isPlayingAudio) _playNext();
   }
 
@@ -173,26 +175,21 @@ class AssistantService {
       return;
     }
     _isPlayingAudio = true;
-
     final bytes = _audioQueue.removeAt(0);
     try {
       final dir = await getTemporaryDirectory();
-      final file = File(
-          '${dir.path}/ok_chunk_${DateTime.now().millisecondsSinceEpoch}.wav');
+      final file =
+          File('${dir.path}/ok_${DateTime.now().millisecondsSinceEpoch}.wav');
       await file.writeAsBytes(bytes);
-
       await _player.setFilePath(file.path);
       await _player.play();
-
-      // Wait until done
       await _player.processingStateStream
           .firstWhere((s) => s == ProcessingState.completed);
-
       await file.delete();
     } catch (e) {
       print('[Audio] Playback error: $e');
     }
-    _playNext(); // play next chunk
+    _playNext();
   }
 
   Future<void> stopAudio() async {
@@ -201,14 +198,12 @@ class AssistantService {
     await _player.stop();
   }
 
-  void _onWsError(dynamic e) {
-    print('[WS] Error: $e');
+  void _onWsError(e) {
     _isConnected = false;
     onError?.call('WebSocket error: $e');
   }
 
   void _onWsDone() {
-    print('[WS] Closed');
     _isConnected = false;
   }
 
@@ -217,34 +212,30 @@ class AssistantService {
     _player.dispose();
   }
 
-  // ── Legacy stubs (kept so existing imports don't break) ───────
+  // Legacy stubs
   Future<Map<String, dynamic>> sendMessage(String msg, String uid,
           {String modelProvider = '',
           String modelName = '',
           String speakerId = '',
           bool enablePremium = false}) async =>
       {'response': '', 'audio_id': null, 'model_used': 'groq'};
-
   Future<Map<String, dynamic>> getAvailableConfig() async => {
         'available_models': {
           'groq': {'llama-3.3-70b-versatile': 'Llama 3.3 70B'}
         },
         'available_speakers': {'ana_florence': 'Ana Florence (XTTS)'},
       };
-
   Future<Map<String, dynamic>> getUserSettings(String uid) async => {
         'modelProvider': 'groq',
         'modelName': 'llama-3.3-70b-versatile',
         'speakerId': 'ana_florence',
-        'enablePremium': false,
+        'enablePremium': false
       };
-
   Future<void> saveUserSettings(String uid,
       {String modelProvider = '',
       String modelName = '',
       String speakerId = '',
       bool enablePremium = false}) async {}
-
   Future<List<dynamic>> getHistory(String uid) async => [];
   Future<void> pollAudioAndPlay(String audioId) async {}
 }

@@ -159,23 +159,26 @@ class _SendOtpScreenState extends State<SendOtpScreen>
   Future<void> _handleBypassOTP(String phoneNumber) async {
     try {
       print('Handling bypass OTP for phone: $phoneNumber');
-      
+
       // Get device info
       final deviceInfo = await _getDeviceInfo();
-      
+
       // Call verify OTP with dummy code (backend will bypass verification)
-      final response = await http.post(
-        Uri.parse(ApiConfig.verifyOtpUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'phone': phoneNumber.trim(),
-          'code': '000000', // Dummy code - backend will bypass for these numbers
-          'deviceInfo': deviceInfo,
-        }),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse(ApiConfig.verifyOtpUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'phone': phoneNumber.trim(),
+              'code':
+                  '000000', // Dummy code - backend will bypass for these numbers
+              'deviceInfo': deviceInfo,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
 
       print('Bypass verify response status: ${response.statusCode}');
       print('Bypass verify response body: ${response.body}');
@@ -193,7 +196,7 @@ class _SendOtpScreenState extends State<SendOtpScreen>
 
         if (success && mounted) {
           HapticFeedback.heavyImpact();
-          
+
           // Navigate based on user status
           Future.delayed(const Duration(milliseconds: 500), () {
             if (mounted) {
@@ -220,8 +223,11 @@ class _SendOtpScreenState extends State<SendOtpScreen>
                   ),
                 );
               } else {
-                Navigator.pushReplacement(
-                  context,
+                // Existing user with bypassed OTP:
+                // go straight to home and clear back stack so that
+                // back from home closes the app instead of going
+                // back to auth / role selection screens.
+                Navigator.of(context).pushAndRemoveUntil(
                   PageRouteBuilder(
                     pageBuilder: (context, animation, secondaryAnimation) =>
                         BottomNavScreen(),
@@ -237,6 +243,7 @@ class _SendOtpScreenState extends State<SendOtpScreen>
                     },
                     transitionDuration: const Duration(milliseconds: 500),
                   ),
+                  (route) => false,
                 );
               }
             }
@@ -278,12 +285,12 @@ class _SendOtpScreenState extends State<SendOtpScreen>
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
-        
+
         // Check if OTP was bypassed
         if (responseData['status'] == 'bypassed') {
           print('OTP bypassed for number: $fullNumber');
           HapticFeedback.heavyImpact();
-          
+
           // Directly handle bypass - verify and navigate to home
           await _handleBypassOTP(fullNumber);
         } else {
